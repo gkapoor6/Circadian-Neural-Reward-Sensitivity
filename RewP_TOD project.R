@@ -39,6 +39,7 @@ for (i in seq_along(study_ids)) {
   writeLines(lines, output_file)
   # Read in modified .txt file
   data <- read.table(output_file, sep="", header=TRUE, fill=TRUE, check.names=FALSE)
+  # TODO: KEANAN CHECK CALC BELOW
   # Get RewP at Cz (Joyner et al., 2019)
   data$RewPCz <- data$`Cz-Wins` - data$`Cz-Losses`
   # Assign the data frame to a variable
@@ -104,6 +105,16 @@ erp_107 <- dplyr::select(erp_107, subname, `Cz-Wins`, `Cz-Losses`, RewPCz)
 colnames(erp_107) <- c("subname","Cz_Wins","Cz_Losses","RewP_Cz")
 
 # ERP and Log Data Management ---------------------------------------------------------
+
+## OLD CODE ##
+# Calculate RewP for Study 96
+# erp_94$RewP_FCz <- erp_94$RewPmFCzG - erp_94$RewPmFCzL
+# Gain, Loss, RewP, Age
+# erp_86 <- dplyr::select(erp_86, subname,FCz_Gain_w3,FCz_Loss_w3,rewp_mean_FCz_w3, AGE)
+# erp_94 <- dplyr::select(erp_94, subname,RewPmFCzG,RewPmFCzL,RewP_FCz, AGE)
+# colnames(erp_86) <- c("subname","FRN_Gain_FCz","FRN_Loss_FCz","RewP_FCz","Age")
+# colnames(erp_94) <- c("subname","FRN_Gain_FCz","FRN_Loss_FCz","RewP_FCz","Age")
+
 
 # Start and End Times for Doors Task (Studies 86 - 107)
 log_86 <- dplyr::select(log_86, subname_log, doors_start, doors_end, hookups_start)
@@ -694,7 +705,7 @@ summary(psych_104$CAFFEINE)
 
 
 # TODO STUDY 107
-# TODO: Score IDAS vars
+# TODO: Score IDAS vars, Keanan has script
 # TODO: Convert DOB to Age (need study date)
 st0107 <- foreign::read.spss("st0107_Demographics_RAW.sav", to.data.frame = T)
 st0107_idas <- foreign::read.spss("st0107_IDAS_RAW.sav", to.data.frame = T)
@@ -782,9 +793,116 @@ data_all$Season[data_all$Study == "107"] <- "Summer" # June
 data_all$BMI <- (data_all$WEIGHT*703)/ (data_all$HEIGHT^2)
 
 
+
+# Diurnal Rhythm Modeling -------------------------------------------------
+
+library(cosinor)
+
+data_all$GENDER <- as.character(data_all$GENDER)
+data_all$GENDER[data_all$GENDER == "Female"] <- 0
+data_all$GENDER[data_all$GENDER == "Male"] <- 1
+data_all$GENDER <- as.numeric(data_all$GENDER)
+
+data_all$Sleep_bin <- data_all$SLEEP
+data_all$Sleep_bin[data_all$Sleep_bin < 6] <- 0
+data_all$Sleep_bin[data_all$Sleep_bin >= 6 & data_all$Sleep_bin < 7.5] <- 1
+data_all$Sleep_bin[data_all$Sleep_bin >= 7.5 & data_all$Sleep_bin < 9] <- 2
+data_all$Sleep_bin[data_all$Sleep_bin >= 9] <- 3
+
+data_all$StudyLength_bin <- data_all$StudyLength
+data_all$StudyLength_bin[data_all$StudyLength_bin < 120] <- 0
+data_all$StudyLength_bin[data_all$StudyLength_bin >= 120 & data_all$StudyLength < 180] <- 1
+data_all$StudyLength_bin[data_all$StudyLength_bin >= 180 & data_all$StudyLength < 240] <- 2
+data_all$StudyLength_bin[data_all$StudyLength_bin >= 240] <- 3
+
+# using a period equal to the range of time in the observed dataset
+fit <- cosinor.lm(RewP_Cz ~ time(Time), data_all, period = 7.966667)
+summary(fit)
+
+fit <- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data_all, period = 16)
+summary(fit)
+
+
+test_cosinor(fit, "SLEEP", param = "amp")
+test_cosinor(fit, "SLEEP", param = "acr")
+
+summary(data$RewP_Cz)
+summary(predict(fit))
+
+
+ggplot_cosinor.lm(fit, x_str = "GENDER")
+
+
+# Custom Cosinor Model ----------------------------------------------------
+
+T = 24
+
+data_all$cos_Time <- cos(2 * pi * data_all$Time / T)
+data_all$sin_Time <- sin(2 * pi * data_all$Time / T)
+
+cos <- lm(RewP_Cz ~ cos_Time + sin_Time, data_all)
+
+b1 <- coef(cos)["cos_Time"]
+b2 <- coef(cos)["sin_Time"]
+
+# Compute amplitude
+amp <- sqrt(b1^2 + b2^2)
+
+# Compute acrophase (in radians)
+acr <- atan2(b2, b1)
+
+# testing against cosinor model package
+fit <- cosinor.lm(RewP_Cz ~ time(Time), data_all, period = 24)
+summary(fit)
+
+# continuous variable interactions
+full_model <- lm(RewP_Cz ~ cos_Time + sin_Time, data = data_all)
+null_model <- lm(RewP_Cz ~ 1, data_all)
+anova(null_model, full_model)
+
+bootstrap_cosinor <- function(data, model_formula, period) {
+  # Resample data
+  resampled_data <- data[sample(nrow(data), replace = TRUE), ]
+  
+  # Fit the model
+  model <- lm(model_formula, data = resampled_data)
+  
+  # Get coefficients
+  b1 <- coef(model)["cos_Time"]
+  b2 <- coef(model)["sin_Time"]
+  
+  # Compute amplitude and acrophase
+  amplitude <- sqrt(b1^2 + b2^2)
+  acrophase <- atan2(b2, b1)
+  
+  return(c(amplitude = amplitude, acrophase = acrophase))
+}
+
+# Perform bootstrapping
+set.seed(123)  # For reproducibility
+n_boot <- 1000
+boot_results <- replicate(n_boot, bootstrap_cosinor(df, RewP ~ cos_Time + sin_Time, period = 24))
+
+# Compute p-values for amplitude
+amplitude_values <- boot_results["amplitude", ]
+amplitude_p <- mean(amplitude_values <= 0)  # Test against null hypothesis of zero amplitude
+
+# Confidence intervals for acrophase
+acrophase_values <- boot_results["acrophase", ]
+acrophase_ci <- quantile(acrophase_values, probs = c(0.025, 0.975))
+
+# Results
+cat("Amplitude p-value:", amplitude_p, "\n")
+cat("Acrophase 95% CI:", acrophase_ci, "\n")
+
+# testing against cosinor model package
+fit <- cosinor.lm(RewP_Cz ~ time(Time), data_all[data_all$Sleep_bin == 2,], period = 24)
+summary(fit)
+
+
 # Exploratory Plotting ----------------------------------------------------
 
-ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
+ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() + ylim(0,6) 
 
 ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Cap))) + geom_smooth(se = F) + theme_bw() 
 
@@ -797,7 +915,7 @@ ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(GENDER))) + geom_smooth(s
 
 ggplot(data_all[data_all$SLEEP > 6,], aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
 
-ggplot(data_all[data_all$SLEEP <= 6,], aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
+ggplot(data_all[data_all$SLEEP < 6,], aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
 
 data_all$Sleep_bin <- data_all$SLEEP
 data_all$Sleep_bin[data_all$Sleep_bin < 6] <- 0
@@ -818,7 +936,7 @@ data_all$StudyLength_bin[data_all$StudyLength_bin >= 240] <- 3
 
 ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(StudyLength_bin))) + geom_smooth(se = F) + theme_bw() 
 
-ggplot(data_all[data_all$Sleep_bin == 3,], aes(Time, RewP_Cz, colour = as.factor(StudyLength_bin))) + geom_smooth(se = F) + theme_bw() 
+ggplot(data_all[data_all$Sleep_bin == 1,], aes(Time, RewP_Cz, colour = as.factor(StudyLength_bin))) + geom_smooth(se = F) + theme_bw() 
 
 ggplot(data_all, aes(SLEEP, RewP_Cz)) + geom_smooth(se = T) + theme_bw() 
 ggplot(data_all, aes(StudyLength, RewP_Cz)) + geom_smooth(se = T) + theme_bw() 
@@ -829,4 +947,21 @@ test[["residuals"]]
 data_all$test[!is.na(data_all$StudyLength)] <- residuals(lm(RewP_Cz ~ SLEEP + StudyLength, data_all[!is.na(data_all$StudyLength),]))
 
 ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
+
+
+# New Model Attempts ------------------------------------------------------
+
+library(cosinoRmixedeffects)
+library(lmerTest)
+library(emmeans)
+
+data_all <- create.cosinor.param(time="Time", period=24, data=data_all)
+
+f1 <- fit.cosinor.mixed(y = "RewP_Cz", x = "SLEEP", random = "1|Study", data = data_all)
+
+summary(f1)
+
+db.means<-get.means.ci.cosinor(f1, contrast.frm="~SLEEP",nsim=100)
+db.means
+
 

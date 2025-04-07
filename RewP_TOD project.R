@@ -2,6 +2,7 @@ library(psych)
 library(tidyverse)
 library(dplyr)
 
+
 # Load in Time of Day Data ------------
 
 # Time of day logs from Qualtrics
@@ -214,7 +215,9 @@ data$Ref <- as.POSIXct(paste(data$RefDate, data$RefTime), format="%m/%d/%Y %H:%M
 data$doors_start2 <- as.POSIXct(paste(data$RefDate, data$doors_start), format="%m/%d/%Y %H:%M:%S")
 data$Time <- as.numeric(data$doors_start2 - data$Ref)
 
-ggplot(data, aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = FALSE) + theme_bw() 
+# Create cosinor parameters for analysis
+data$cos_Time <- cos(2 * pi * data$Time / 24)
+data$sin_Time <- sin(2 * pi * data$Time / 24)
 
 # PSYCHDATA -- Clean Psychopathology & Demographics ---------------------------------------------------------
 
@@ -739,19 +742,23 @@ data_all$doors_start <- format(as.POSIXct(data_all$doors_start,format='%I:%M %p'
 
 data_all <- data_all[complete.cases(data_all),]
 
-data_all$RefDate <- "10/19/2024"
+data_all$RefDate <- "04/03/2025"
 data_all$RefTime <- "00:00:00"
 
 data_all$Ref <- as.POSIXct(paste(data_all$RefDate, data_all$RefTime), format="%m/%d/%Y %H:%M:%S")
 data_all$doors_start2 <- as.POSIXct(paste(data_all$RefDate, data_all$doors_start), format="%m/%d/%Y %H:%M:%S")
 data_all$Time <- as.numeric(data_all$doors_start2 - data_all$Ref)
 
+# Create cosinor parameters for analysis
+data_all$cos_Time <- cos(2 * pi * data_all$Time / 24)
+data_all$sin_Time <- sin(2 * pi * data_all$Time / 24)
+
 # Hookup Times
 data_all$hookups_start <- format(as.POSIXct(data_all$hookups_start,format='%I:%M %p'),format="%H:%M:%S")
 
 data_all <- data_all[complete.cases(data_all),]
 
-data_all$RefDate <- "10/19/2024"
+data_all$RefDate <- "04/03/2025"
 data_all$RefTime <- "00:00:00"
 
 data_all$Ref <- as.POSIXct(paste(data_all$RefDate, data_all$RefTime), format="%m/%d/%Y %H:%M:%S")
@@ -760,7 +767,6 @@ data_all$HookupsTime <- as.numeric(data_all$hookups_start2 - data_all$Ref)
 
 data_all$StudyLength <- data_all$doors_start2 - data_all$hookups_start2
 data_all$StudyLength[data_all$StudyLength < 0] <- NA
-
 
 # Cap Type
 data_all$Cap <- NA
@@ -793,11 +799,6 @@ data_all$Season[data_all$Study == "107"] <- "Summer" # June
 data_all$BMI <- (data_all$WEIGHT*703)/ (data_all$HEIGHT^2)
 
 
-
-# Diurnal Rhythm Modeling -------------------------------------------------
-
-library(cosinor)
-
 data_all$GENDER <- as.character(data_all$GENDER)
 data_all$GENDER[data_all$GENDER == "Female"] <- 0
 data_all$GENDER[data_all$GENDER == "Male"] <- 1
@@ -815,153 +816,251 @@ data_all$StudyLength_bin[data_all$StudyLength_bin >= 120 & data_all$StudyLength 
 data_all$StudyLength_bin[data_all$StudyLength_bin >= 180 & data_all$StudyLength < 240] <- 2
 data_all$StudyLength_bin[data_all$StudyLength_bin >= 240] <- 3
 
-# using a period equal to the range of time in the observed dataset
-fit <- cosinor.lm(RewP_Cz ~ time(Time), data_all, period = 7.966667)
-summary(fit)
+######### MODELING AND VISUALIZATION ##########
 
-fit <- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data_all, period = 16)
-summary(fit)
+# Plot RewP vs. Time for ALL data with points
+ggplot(data_all, aes(Time, RewP_Cz)) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(se = FALSE) + 
+  theme_bw() +
+  labs(title = "All Data with Points")
+
+# Plot RewP vs. Time BY STUDY with points
+ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Study))) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth(se = FALSE) + 
+  theme_bw() +
+  labs(title = "By Study with Points")
+
+# Plot RewP vs. Time BY STUDY
+ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Study))) + 
+  geom_smooth(se = FALSE) + 
+  theme_bw() +
+  labs(title = "By Study")
+
+# Plot RewP vs. Time BY Cap
+ggplot(data, aes(Time, RewP_Cz, colour = as.factor(Cap))) + 
+  geom_smooth(se = FALSE) + 
+  theme_bw() +
+  labs(title = "By Cap")
+
+# Plot RewP vs. Time BY Season
+ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Season))) + 
+  geom_smooth(se = FALSE) + 
+  theme_bw() +
+  labs(title = "By Season")
 
 
-test_cosinor(fit, "SLEEP", param = "amp")
-test_cosinor(fit, "SLEEP", param = "acr")
+# LINEAR Model RewP vs. Time, Age, Gender for ALL data
+summary(lm(RewP_Cz ~ Time, data = data_all))
+summary(lm(RewP_Cz ~ AGE, data = data_all))
+summary(lm(RewP_Cz ~ GENDER, data = data_all))
+summary(lm(RewP_Cz ~ Time + AGE + GENDER, data = data_all))
 
-summary(data$RewP_Cz)
-summary(predict(fit))
+# QUADRATIC Model RewP vs. Time, Age, Gender for ALL data
+data_all$Time_2 = data_all$Time*data_all$Time
+summary(lm(RewP_Cz ~ Time_2 + Time, data = data_all))
+summary(lm(RewP_Cz ~ Time_2 + Time + AGE, data = data_all))
+summary(lm(RewP_Cz ~ Time_2 + Time + GENDER, data = data_all))
+summary(lm(RewP_Cz ~ Time_2 + Time + AGE + GENDER, data = data_all))
+
+# CUBIC Model RewP vs. Time, Age, Gender for ALL data
+data_all$Time_3 = data_all$Time*data_all$Time*data_all$Time
+summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time, data = data_all))
+summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time + AGE, data = data_all))
+summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time + GENDER, data = data_all))
+summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time + AGE + GENDER, data = data_all))
+
+# LINEAR Model RewP ~ Time for EACH study
+# Create a list to store study-specific models
+study_models <- list()
+# Fit models for each study
+for(study in unique(data_all$Study)) {
+  study_data <- subset(data_all, Study == study)
+  study_models[[study]] <- lm(RewP_Cz ~ Time, data = study_data)
+}
+# Print summaries for each study
+cat("\nStudy-specific RewP ~ Time models:\n")
+for(study in names(study_models)) {
+  cat("\nStudy", study, ":\n")
+  print(summary(study_models[[study]]))
+}
 
 
-ggplot_cosinor.lm(fit, x_str = "GENDER")
+# Model Sleep
+mod_1 <- lm(RewP_Cz ~ Time + SLEEP, data = data_all)
+summary(mod_1)
+
+# Add sleep to the model
+model_time_sleep_age_gender <- lm(RewP_Cz ~ Time + SLEEP + AGE + GENDER, data = data_all)
+summary(model_time_sleep_age_gender)
+
+# Study-specific models with sleep
+for (study in unique(data_all$Study)) {
+  study_data <- data_all[data_all$Study == study, ]
+  model <- lm(RewP_Cz ~ Time + SLEEP, data = study_data)
+  cat("\nStudy", study, ":\n")
+  print(summary(model))
+}
 
 
-# Custom Cosinor Model ----------------------------------------------------
 
-T = 24
+##### SINUSOIDAL MODELING #####
+library(cosinor)
 
+# Create cosinor parameters
+T = 24  # 24-hour period
 data_all$cos_Time <- cos(2 * pi * data_all$Time / T)
 data_all$sin_Time <- sin(2 * pi * data_all$Time / T)
 
-cos <- lm(RewP_Cz ~ cos_Time + sin_Time, data_all)
+# Fit cosinor model
+model_cosinor <- lm(RewP_Cz ~ cos_Time + sin_Time, data = data_all)
+summary(model_cosinor)
 
-b1 <- coef(cos)["cos_Time"]
-b2 <- coef(cos)["sin_Time"]
+# Fit cosinor model with sleep
+model_cosinor_sleep <- lm(RewP_Cz ~ cos_Time + sin_Time + SLEEP, data = data_all)
+summary(model_cosinor_sleep)
 
-# Compute amplitude
-amp <- sqrt(b1^2 + b2^2)
+# Fit separate models for amplitude and timing effects
+# Model 1: Sleep effect on amplitude only
+model_amp <- lm(RewP_Cz ~ cos_Time + sin_Time + SLEEP + SLEEP:cos_Time + SLEEP:sin_Time, data = data_all)
+summary(model_amp)
 
-# Compute acrophase (in radians)
-acr <- atan2(b2, b1)
+# Model 2: Sleep effect on timing only
+model_timing <- lm(RewP_Cz ~ cos_Time + sin_Time + SLEEP + SLEEP:cos_Time, data = data_all)
+summary(model_timing)
 
-# testing against cosinor model package
-fit <- cosinor.lm(RewP_Cz ~ time(Time), data_all, period = 24)
-summary(fit)
-
-# continuous variable interactions
-full_model <- lm(RewP_Cz ~ cos_Time + sin_Time, data = data_all)
-null_model <- lm(RewP_Cz ~ 1, data_all)
-anova(null_model, full_model)
-
-bootstrap_cosinor <- function(data, model_formula, period) {
-  # Resample data
-  resampled_data <- data[sample(nrow(data), replace = TRUE), ]
-  
-  # Fit the model
-  model <- lm(model_formula, data = resampled_data)
-  
-  # Get coefficients
-  b1 <- coef(model)["cos_Time"]
-  b2 <- coef(model)["sin_Time"]
-  
-  # Compute amplitude and acrophase
-  amplitude <- sqrt(b1^2 + b2^2)
-  acrophase <- atan2(b2, b1)
-  
-  return(c(amplitude = amplitude, acrophase = acrophase))
+# PLOT COSINOR by calculating cos and sine values
+# Function to calculate amplitude from coefficients
+calc_amplitude <- function(model, sleep_val) {
+  b1 <- coef(model)["cos_Time"] + coef(model)["cos_Time:SLEEP"] * sleep_val
+  b2 <- coef(model)["sin_Time"] + coef(model)["sin_Time:SLEEP"] * sleep_val
+  return(sqrt(b1^2 + b2^2))
 }
 
-# Perform bootstrapping
-set.seed(123)  # For reproducibility
-n_boot <- 1000
-boot_results <- replicate(n_boot, bootstrap_cosinor(df, RewP ~ cos_Time + sin_Time, period = 24))
+# Function to calculate acrophase in hours from coefficients
+calc_acrophase <- function(model, sleep_val) {
+  b1 <- coef(model)["cos_Time"] + coef(model)["cos_Time:SLEEP"] * sleep_val
+  b2 <- coef(model)["sin_Time"] + coef(model)["sin_Time:SLEEP"] * sleep_val
+  acrophase_rad <- atan2(b2, b1)
+  acrophase_hours <- (acrophase_rad * 24 / (2 * pi)) %% 24
+  return(acrophase_hours)
+}
 
-# Compute p-values for amplitude
-amplitude_values <- boot_results["amplitude", ]
-amplitude_p <- mean(amplitude_values <= 0)  # Test against null hypothesis of zero amplitude
+# Create sequence of sleep values for plotting
+sleep_seq <- seq(min(data_all$SLEEP, na.rm=TRUE), 
+                 max(data_all$SLEEP, na.rm=TRUE), 
+                 length.out=100)
 
-# Confidence intervals for acrophase
-acrophase_values <- boot_results["acrophase", ]
-acrophase_ci <- quantile(acrophase_values, probs = c(0.025, 0.975))
+# Calculate amplitude and acrophase for each sleep value using separate models
+results_amp <- data.frame(
+  sleep = sleep_seq,
+  amplitude = sapply(sleep_seq, function(s) calc_amplitude(model_amp, s))
+)
 
-# Results
-cat("Amplitude p-value:", amplitude_p, "\n")
-cat("Acrophase 95% CI:", acrophase_ci, "\n")
+results_timing <- data.frame(
+  sleep = sleep_seq,
+  acrophase = sapply(sleep_seq, function(s) calc_acrophase(model_timing, s))
+)
 
-# testing against cosinor model package
-fit <- cosinor.lm(RewP_Cz ~ time(Time), data_all[data_all$Sleep_bin == 2,], period = 24)
-summary(fit)
+# Create plots with continuous sleep variable
+p1 <- ggplot(results_amp, aes(x = sleep, y = amplitude)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = amplitude - sd(data_all$RewP_Cz, na.rm=TRUE),
+                  ymax = amplitude + sd(data_all$RewP_Cz, na.rm=TRUE)),
+              alpha = 0.2) +
+  labs(x = "Sleep Duration (hours)", 
+       y = "Amplitude (μV)",
+       title = "Effect of Sleep Duration on RewP Amplitude") +
+  theme_minimal()
 
+p2 <- ggplot(results_timing, aes(x = sleep, y = acrophase)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = acrophase - sd(data_all$RewP_Cz, na.rm=TRUE),
+                  ymax = acrophase + sd(data_all$RewP_Cz, na.rm=TRUE)),
+              alpha = 0.2) +
+  labs(x = "Sleep Duration (hours)", 
+       y = "Acrophase (hours)",
+       title = "Effect of Sleep Duration on RewP Timing") +
+  theme_minimal()
 
-# Exploratory Plotting ----------------------------------------------------
+# Print plots
+print(p1)
+print(p2)
 
-ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() + ylim(0,6) 
+# Calculate significance of sleep effects separately
+# For amplitude: test if sleep moderates the overall rhythm
+amp_test <- anova(
+  lm(RewP_Cz ~ cos_Time + sin_Time + SLEEP, data = data_all),
+  model_amp
+)
 
-ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Cap))) + geom_smooth(se = F) + theme_bw() 
+# For timing: test if sleep moderates the phase
+timing_test <- anova(
+  lm(RewP_Cz ~ cos_Time + sin_Time + SLEEP, data = data_all),
+  model_timing
+)
 
-ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Season))) + geom_smooth(se = T) + theme_bw() 
+cat("\nP-value for sleep effect on amplitude:", amp_test$`Pr(>F)`[2])
+cat("\nP-value for sleep effect on timing:", timing_test$`Pr(>F)`[2])
 
-wins <- ggplot(data_all, aes(Time, Cz_Wins, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
-losses <- ggplot(data_all, aes(Time, Cz_Losses, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
+# Print model summaries for detailed coefficients
+cat("\n\nAmplitude model summary:\n")
+print(summary(model_amp))
 
-ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(GENDER))) + geom_smooth(se = T) + theme_bw() 
+cat("\n\nTiming model summary:\n")
+print(summary(model_timing))
 
-ggplot(data_all[data_all$SLEEP > 6,], aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
-
-ggplot(data_all[data_all$SLEEP < 6,], aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
-
-data_all$Sleep_bin <- data_all$SLEEP
-data_all$Sleep_bin[data_all$Sleep_bin < 6] <- 0
-data_all$Sleep_bin[data_all$Sleep_bin >= 6 & data_all$Sleep_bin < 7.5] <- 1
-data_all$Sleep_bin[data_all$Sleep_bin >= 7.5 & data_all$Sleep_bin < 9] <- 2
-data_all$Sleep_bin[data_all$Sleep_bin >= 9] <- 3
-
-ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Sleep_bin))) + geom_smooth(se = F) + theme_bw() 
-
-
-ggplot(data_all, aes(StudyLength, colour = as.factor(Cap))) + geom_density() + theme_bw() 
-
-data_all$StudyLength_bin <- data_all$StudyLength
-data_all$StudyLength_bin[data_all$StudyLength_bin < 120] <- 0
-data_all$StudyLength_bin[data_all$StudyLength_bin >= 120 & data_all$StudyLength < 180] <- 1
-data_all$StudyLength_bin[data_all$StudyLength_bin >= 180 & data_all$StudyLength < 240] <- 2
-data_all$StudyLength_bin[data_all$StudyLength_bin >= 240] <- 3
-
-ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(StudyLength_bin))) + geom_smooth(se = F) + theme_bw() 
-
-ggplot(data_all[data_all$Sleep_bin == 1,], aes(Time, RewP_Cz, colour = as.factor(StudyLength_bin))) + geom_smooth(se = F) + theme_bw() 
-
-ggplot(data_all, aes(SLEEP, RewP_Cz)) + geom_smooth(se = T) + theme_bw() 
-ggplot(data_all, aes(StudyLength, RewP_Cz)) + geom_smooth(se = T) + theme_bw() 
-
-test <- lm(RewP_Cz ~ SLEEP + StudyLength, data_all)
-test[["residuals"]]
-
-data_all$test[!is.na(data_all$StudyLength)] <- residuals(lm(RewP_Cz ~ SLEEP + StudyLength, data_all[!is.na(data_all$StudyLength),]))
-
-ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = F) + theme_bw() 
-
-
-# New Model Attempts ------------------------------------------------------
-
+# Mixed-Effects Cosinor Analysis using cosinoRmixedeffects -----------------------
+library(remotes)
+remotes::install_github("maytesuarezfarinas/cosinoRmixedeffects")
 library(cosinoRmixedeffects)
 library(lmerTest)
 library(emmeans)
 
+# Create cosinor parameters for the data
 data_all <- create.cosinor.param(time="Time", period=24, data=data_all)
 
-f1 <- fit.cosinor.mixed(y = "RewP_Cz", x = "SLEEP", random = "1|Study", data = data_all)
+# Fit mixed-effects cosinor model with sleep as predictor
+# Using random intercepts for Study to account for study-level variations
+f1 <- fit.cosinor.mixed(y = "RewP_Cz", 
+                       x = "SLEEP",
+                       random = "1|Study", 
+                       data = data_all)
 
-summary(f1)
+# Get estimated means and confidence intervals for different sleep values
+db.means <- get.means.ci.cosinor(fit=f1, 
+                                contrast.frm="~SLEEP",
+                                nsim=500)
 
-db.means<-get.means.ci.cosinor(f1, contrast.frm="~SLEEP",nsim=100)
-db.means
+# Get pairwise contrasts for sleep effects
+db.delta <- get.contrasts.ci.cosinor(fit=f1,
+                                    contrast.frm="~SLEEP", 
+                                    nsim=500)
+
+# Print results
+print(summary(f1))
+print(db.means)
+print(db.delta)
+
+# Create visualization of the cosinor curves
+p <- ggplot.cosinor.lmer(object=f1,
+                        x_str="SLEEP",
+                        period=24,
+                        db.means=db.means,
+                        DATA=data_all)
+
+# Customize the plot
+p + labs(x="Time (hours)", y="RewP amplitude (μV)") +
+    theme_bw() +
+    geom_hline(aes(yintercept=MESOR), linetype=2, color="black") +
+    geom_segment(aes(x = T_AMP, 
+                    y = MESOR+0.05, 
+                    xend = T_AMP, 
+                    yend = MESOR+Amplitude-0.05),
+                arrow = arrow(length = unit(0.15, "cm"),ends="both"), 
+                size=0.5, color="gray50",linetype=1)
+
+
 
 

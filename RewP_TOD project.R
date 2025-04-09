@@ -818,6 +818,12 @@ data_all$StudyLength_bin[data_all$StudyLength_bin >= 240] <- 3
 
 ######### MODELING AND VISUALIZATION ##########
 
+# Plot RewP
+ggplot(data_all, aes(x = RewP_Cz)) + 
+  geom_histogram(binwidth = 0.5, fill = "steelblue", color = "black", alpha = 0.7) +
+  theme_bw() +
+  labs(title = "Distribution of RewP", x = "RewP_Cz", y = "Count")
+
 # Plot RewP vs. Time for ALL data with points
 ggplot(data_all, aes(Time, RewP_Cz)) + 
   geom_point(alpha = 0.3) +
@@ -851,11 +857,15 @@ ggplot(data_all, aes(Time, RewP_Cz, colour = as.factor(Season))) +
   labs(title = "By Season")
 
 
-# LINEAR Model RewP vs. Time, Age, Gender for ALL data
+# LINEAR Model RewP, Wins, Losses vs. Time, Age, Gender, gd_total for ALL data
 summary(lm(RewP_Cz ~ Time, data = data_all))
+summary(lm(Cz_Wins ~ Time, data = data_all))
+summary(lm(Cz_Losses ~ Time, data = data_all))
 summary(lm(RewP_Cz ~ AGE, data = data_all))
 summary(lm(RewP_Cz ~ GENDER, data = data_all))
+summary(lm(RewP_Cz ~ gd_tot, data = data_all))
 summary(lm(RewP_Cz ~ Time + AGE + GENDER, data = data_all))
+summary(lm(RewP_Cz ~ Time + AGE + GENDER + gd_tot, data = data_all))
 
 # QUADRATIC Model RewP vs. Time, Age, Gender for ALL data
 data_all$Time_2 = data_all$Time*data_all$Time
@@ -863,6 +873,7 @@ summary(lm(RewP_Cz ~ Time_2 + Time, data = data_all))
 summary(lm(RewP_Cz ~ Time_2 + Time + AGE, data = data_all))
 summary(lm(RewP_Cz ~ Time_2 + Time + GENDER, data = data_all))
 summary(lm(RewP_Cz ~ Time_2 + Time + AGE + GENDER, data = data_all))
+summary(lm(RewP_Cz ~ Time_2 + Time + AGE + GENDER + gd_tot, data = data_all))
 
 # CUBIC Model RewP vs. Time, Age, Gender for ALL data
 data_all$Time_3 = data_all$Time*data_all$Time*data_all$Time
@@ -870,6 +881,7 @@ summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time, data = data_all))
 summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time + AGE, data = data_all))
 summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time + GENDER, data = data_all))
 summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time + AGE + GENDER, data = data_all))
+summary(lm(RewP_Cz ~ Time_3 + Time_2 + Time + AGE + GENDER + gd_tot, data = data_all))
 
 # LINEAR Model RewP ~ Time for EACH study
 # Create a list to store study-specific models

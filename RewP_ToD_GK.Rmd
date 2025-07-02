@@ -1,0 +1,1978 @@
+---
+title: "cosinor"
+output: html_document
+date: "2025-04-22"
+---
+
+```{r}
+library(boot)
+library(car)
+library(cosinor)
+library(tidyverse)
+library(psych)
+library(dplyr)
+library(lubridate)
+library(suncalc)
+```
+
+``` {r data prep}
+# Load in Time of Day Data ------------
+
+# Time of day logs from Qualtrics
+log_86 <- data.frame(haven::read_sav("st0086 Log Data Entry.sav"))
+log_94 <- data.frame(haven::read_sav("st0094 Log Data Entry.sav"))
+log_96 <- data.frame(haven::read_sav("st0096 Log Data Entry.sav"))
+log_100 <- data.frame(haven::read_sav("st0100 Log Data Entry.sav"))
+log_102 <- data.frame(haven::read_sav("st0102 Log Data Entry.sav"))
+log_104 <- data.frame(haven::read_sav("st0104 Log Data Entry.sav"))
+log_107 <- data.frame(haven::read_sav("st0107 Log Data Entry.sav"))
+
+# DATA 1 LOAD IN ERP DATA ------
+
+# Study IDs and study names
+study_ids <- c("st0086", "st0094", "st0096", "st0100", "st0102", "st0104", "st0107")
+study_names <- c("erp_86", "erp_94", "erp_96", "erp_100", "erp_102", "erp_104", "erp_107")
+
+# Loop over the study IDs
+for (i in seq_along(study_ids)) {
+  
+  # Get the study ID and variable name for this iteration
+  id <- study_ids[i]
+  study_name <- study_names[i]
+  # Construct existing and modified files names
+  input_file <- paste0(id, "_doors_200-350m.txt")
+  output_file <- paste0(id, "_doors_200-350m_modified.txt")
+  # Read the .txt file to get the original data
+  lines <- readLines(input_file)
+  # Modify header into new .txt file
+  header <- lines[1]
+  new_header <- gsub("Baseline Correction Wins", "Wins", header)
+  new_header <- gsub("Baseline Correction Losses", "Losses", new_header)
+  lines[1] <- new_header
+  # Write the modified lines to the new .txt file
+  writeLines(lines, output_file)
+  # Read in modified .txt file
+  data <- read.table(output_file, sep="", header=TRUE, fill=TRUE, check.names=FALSE)
+  # Get RewP at Cz (Joyner et al., 2019)
+  data$RewPCz <- data$`Cz-Wins` - data$`Cz-Losses`
+  # Assign the data frame to a variable
+  assign(study_name, data)
+}
+
+# Clean up ERP data ----------------
+# Change column names
+# Remove extra letters from subnames
+# Keep only Cz-Wins, Cz-Losses, and RewPCz (Joyner et al., 2019)
+
+# STUDY 86
+colnames(erp_86)[1] <- "subname"
+# Subject 1020 has two rows, remove the first row (?????)
+erp_86 <- erp_86[!(erp_86$subname == "1020_Doors"), ]
+erp_86[[1]] <- gsub("_Doors", "", erp_86[[1]])
+erp_86 <- dplyr::select(erp_86, subname, `Cz-Wins`, `Cz-Losses`, RewPCz)
+colnames(erp_86) <- c("subname","Cz_Wins","Cz_Losses","RewP_Cz")
+
+# STUDY 94
+colnames(erp_94)[1] <- "subname"
+erp_94[[1]] <- gsub("_Doors", "", erp_94[[1]])
+erp_94 <- dplyr::select(erp_94, subname, `Cz-Wins`, `Cz-Losses`, RewPCz)
+colnames(erp_94) <- c("subname","Cz_Wins","Cz_Losses","RewP_Cz")
+
+# STUDY 96
+colnames(erp_96)[1] <- "subname"
+erp_96[[1]] <- gsub("_doors_", "_", erp_96[[1]])
+erp_96[[1]] <- gsub("_doors", "", erp_96[[1]])
+erp_96 <- dplyr::select(erp_96, subname, `Cz-Wins`, `Cz-Losses`, RewPCz)
+colnames(erp_96) <- c("subname","Cz_Wins","Cz_Losses","RewP_Cz")
+
+# STUDY 100
+colnames(erp_100)[1] <- "subname"
+erp_100[[1]] <- gsub("_doors", "", erp_100[[1]])
+erp_100 <- dplyr::select(erp_100, subname, `Cz-Wins`, `Cz-Losses`, RewPCz)
+colnames(erp_100) <- c("subname","Cz_Wins","Cz_Losses","RewP_Cz")
+
+
+# STUDY 102
+colnames(erp_102)[1] <- "subname"
+erp_102[[1]] <- gsub("_doors", "", erp_102[[1]])
+erp_102[[1]] <- gsub("_Doors", "", erp_102[[1]])
+erp_102 <- dplyr::select(erp_102, subname, `Cz-Wins`, `Cz-Losses`, RewPCz)
+colnames(erp_102) <- c("subname","Cz_Wins","Cz_Losses","RewP_Cz")
+
+# STUDY 104
+colnames(erp_104)[1] <- "subname"
+erp_104[[1]] <- gsub("_Doors_convert.cdt", "", erp_104[[1]])
+erp_104 <- dplyr::select(erp_104, subname, `Cz-Wins`, `Cz-Losses`, RewPCz)
+colnames(erp_104) <- c("subname","Cz_Wins","Cz_Losses","RewP_Cz")
+
+# STUDY 107
+colnames(erp_107)[1] <- "subname"
+erp_107[[1]] <- gsub("_Doors.cdt", "", erp_107[[1]])
+erp_107[[1]] <- gsub("_Oddball2_convert.cdt", "", erp_107[[1]])
+erp_107[[1]] <- gsub("_convert.cdt", "", erp_107[[1]])
+erp_107[[1]] <- gsub("_Doors", "", erp_107[[1]])
+erp_107[[1]] <- gsub("_Doors_Oddball2_convert.cdt", "", erp_107[[1]])
+erp_107$subname[erp_107$subname == "st0107_2099"] <- "st0107_s2099"
+erp_107$subname[erp_107$subname == "st0107_2101"] <- "st0107_s2101"
+erp_107 <- dplyr::select(erp_107, subname, `Cz-Wins`, `Cz-Losses`, RewPCz)
+colnames(erp_107) <- c("subname","Cz_Wins","Cz_Losses","RewP_Cz")
+
+# ERP and Log Data Management ---------------------------------------------------------
+
+# Start and End Times for Doors Task (Studies 86 - 107)
+log_86 <- dplyr::select(log_86, subname_log, date, doors_start, doors_end, hookups_start)
+log_94 <- dplyr::select(log_94, subname_log, date, doors_start, doors_end, hookups_start)
+log_96 <- dplyr::select(log_96, subname_log, date, doors_start, doors_end, hookups_start)
+log_100 <- dplyr::select(log_100, subname_log, date, doors_start, doors_end, hookups_start)
+log_102 <- dplyr::select(log_102, subname_log, date, doors_start, doors_end, hookups_start)
+log_104 <- dplyr::select(log_104, subname_log, date, doors_start, doors_end, hookups_start)
+
+# TODO: hookups_start missing for log_107 -- maybe use experiment start time instead?
+log_107 <- dplyr::select(log_107, subname_log, date, doors_start, doors_end)
+log_107$hookups_start <- NA
+
+# Cleaning up LOG subject naming errors ---------------
+
+###### Study 86
+log_86$subname_log[log_86$subname_log == "st0086_s1182_20130620"] <- "st0086_s1182"
+log_86$subname_log[log_86$subname_log == "st0086_s1081_20120405"] <- "st0086_s1081"
+log_86$subname_log[log_86$subname_log == "st0086_s1070_20120206"] <- "st0086_s1070"
+log_86$subname_log[log_86$subname_log == "st0086_c"] <- "st0086_s1016"
+
+###### Study 94
+log_94$subname_log[log_94$subname_log == "st0094_s1125_20150713"] <- "st0094_s1125"
+log_94$subname_log[log_94$subname_log == "st0094_s1124_20150711"] <- "st0094_s1124"
+log_94$subname_log[log_94$subname_log == "st0094_s1103_20150430"] <- "st0094_s1103"
+
+###### Study 96 --- NO ISSUES, subnames match that of data2_96
+
+###### Study 100
+# Remove random letters
+log_100$subname_log <- gsub("[A-Za-z]", "", log_100$subname_log)
+# Add prefix st0100_p to all subnames_log column values
+log_100$subname_log <-  paste0("st0100_p", log_100$subname_log)
+# Remove first row
+log_100 <- log_100[-1,]
+
+###### Study 102
+log_102$subname_log[log_102$subname_log == "st0102_9003"] <- "st0102_p9003"
+log_102$subname_log[log_102$subname_log == "st0102_9011"] <- "st0102_p9011"
+log_102$subname_log[log_102$subname_log == "st0102_9012"] <- "st0102_p9012"
+
+##### Study 104 --- NO ISSUES
+##### Study 107 --- NO ISSUES
+
+##### Merge ERP and Log data  ---------------------------------------------------------
+
+erplog_86 <- merge(erp_86, log_86, all.x = T, all.y = F, by.x = "subname", by.y = "subname_log")
+erplog_94 <- merge(erp_94, log_94, all.x = T, all.y = F, by.x = "subname", by.y = "subname_log")
+erplog_96 <- merge(erp_96, log_96, all.x = T, all.y = F, by.x = "subname", by.y = "subname_log")
+erplog_100 <- merge(erp_100, log_100, all.x = T, all.y = F, by.x = "subname", by.y = "subname_log")
+erplog_102 <- merge(erp_102, log_102, all.x = T, all.y = F, by.x = "subname", by.y = "subname_log")
+erplog_104 <- merge(erp_104, log_104, all.x = T, all.y = F, by.x = "subname", by.y = "subname_log")
+erplog_107 <- merge(erp_107, log_107, all.x = T, all.y = F, by.x = "subname", by.y = "subname_log")
+
+
+erplog_86$Study <- "86"
+erplog_94$Study <- "94"
+erplog_96$Study <- "96"
+erplog_100$Study <- "100"
+erplog_102$Study <- "102"
+erplog_104$Study <- "104"
+erplog_107$Study <- "107"
+
+#### Merge ALL STUDIES ERP + LOG DATA
+data <- rbind(erplog_86, erplog_94, erplog_96, erplog_100, erplog_102, erplog_104)
+data$Cap <- NA
+
+# Studies with similar type of cap (Cap 0)
+data$Cap[data$Study == "86"] <- 0
+data$Cap[data$Study == "94"] <- 0
+data$Cap[data$Study == "96"] <- 0
+data$Cap[data$Study == "100"] <- 0
+
+# Studies with similar type of cap (Cap 1)
+data$Cap[data$Study == "102"] <- 1
+data$Cap[data$Study == "104"] <- 1
+#data$Cap[data$Study == "107"] <- 1
+
+# Clean up time variable  ---------------------------------------------------------
+str(data$doors_start)
+data$doors_start <- format(as.POSIXct(data$doors_start,format='%I:%M %p'),format="%H:%M:%S")
+
+# Study 107 currently has NAs for hookups_start and some demographic variables so don't use the line below
+# data <- data[complete.cases(data),]
+
+data$RefDate <- "10/19/2024"
+data$RefTime <- "00:00:00"
+
+data$Ref <- as.POSIXct(paste(data$RefDate, data$RefTime), format="%m/%d/%Y %H:%M:%S")
+data$doors_start2 <- as.POSIXct(paste(data$RefDate, data$doors_start), format="%m/%d/%Y %H:%M:%S")
+data$Time <- as.numeric(data$doors_start2 - data$Ref)
+
+ggplot(data, aes(Time, RewP_Cz, colour = as.factor(Study))) + geom_smooth(se = FALSE) + theme_bw() 
+
+# PSYCHDATA -- Clean Psychopathology & Demographics ---------------------------------------------------------
+
+# subname
+# AGE
+# GENDER
+# SLEEP
+# HEIGHT & WEIGHT FOR BMI
+# CAFFEINE - USUAL CONSUMPTION AND NOT DAY-OF 
+# RACE
+# IDAS VARIABLES (12)
+
+
+### STUDY 86
+# LIMITATION CAFFEINE QUESTIONNAIRE - 
+# NO DATA MISSING FOR 18 PARTICIPANTS!
+st0086 <- foreign::read.spss("st86_Demographics.sav", to.data.frame = T)
+st0086_idas <- foreign::read.spss("st86_IDAS_scored.sav", to.data.frame = T)
+psych1_86 <- dplyr::select(st0086, SUBNAME, AGE, GENDER, SLEEP, 
+                           HEIGHT, WEIGHT, 
+                           CAFFEINE, RACE)
+psych2_86 <- dplyr::select(st0086_idas, SUBNAME,
+                           gd_tot, dys_tot, las_tot, ins_tot,
+                           sui_tot, al_tot, ag_tot, tem_tot,
+                           wb_tot, sa_tot, pan_tot, ti_tot)
+
+psych_86 <- merge(psych1_86, psych2_86, all.x = T, all.y = T, by.x = "SUBNAME", by.y = "SUBNAME")
+
+# SUBNAME
+psych_86$SUBNAME <- trimws(psych_86$SUBNAME)
+
+# GENDER
+psych_86$GENDER <- trimws(psych_86$GENDER)
+psych_86$GENDER <- gsub("999", NA, psych_86$GENDER)
+psych_86$GENDER <- as.factor(psych_86$GENDER)
+
+# AGE
+psych_86$AGE <- gsub("999", NA, psych_86$AGE)
+psych_86$AGE  <- as.numeric(psych_86$AGE)
+
+# SLEEP LAST NIGHT
+# Trim white spaces
+psych_86$SLEEP <- trimws(psych_86$SLEEP)
+psych_86$SLEEP <- gsub("10\\+", "10", psych_86$SLEEP) 
+psych_86$SLEEP <- gsub("7 to 8", "7.5", psych_86$SLEEP)
+psych_86$SLEEP <- gsub("6.5-7", "6.75", psych_86$SLEEP)
+psych_86$SLEEP <- gsub("999", NA, psych_86$SLEEP)
+psych_86$SLEEP <- as.numeric(psych_86$SLEEP)
+
+# HEIGHT
+psych_86$HEIGHT <- trimws(psych_86$HEIGHT)
+psych_86$HEIGHT <- gsub("999", NA, psych_86$HEIGHT) 
+psych_86$HEIGHT <- gsub("140", NA, psych_86$HEIGHT)
+psych_86$HEIGHT <- as.numeric(psych_86$HEIGHT)
+psych_86$HEIGHT <- psych_86$HEIGHT * 12
+
+# WEIGHT
+psych_86$WEIGHT <- gsub("999", NA, psych_86$WEIGHT)
+psych_86$WEIGHT <- gsub("5.1", NA, psych_86$WEIGHT)
+psych_86$WEIGHT <- as.numeric(psych_86$WEIGHT)
+
+# CAFFEINE
+psych_86$CAFFEINE <- trimws(psych_86$CAFFEINE)
+psych_86$CAFFEINE <- gsub("no more than 1", "1", psych_86$CAFFEINE)
+psych_86$CAFFEINE <- gsub("not much", "0.5", psych_86$CAFFEINE)
+psych_86$CAFFEINE <- gsub("3 or 4", "3.5", psych_86$CAFFEINE)
+psych_86$CAFFEINE <- gsub("2 to 3", "2.5", psych_86$CAFFEINE)
+psych_86$CAFFEINE <- gsub("0 to 1", "0.5", psych_86$CAFFEINE)
+psych_86$CAFFEINE <- gsub("1 at most", "1", psych_86$CAFFEINE)
+psych_86$CAFFEINE <- gsub("999", NA, psych_86$CAFFEINE)
+psych_86$CAFFEINE <- as.numeric(psych_86$CAFFEINE)
+
+summary(psych_86)
+
+### STUDY 94
+# TODO RACE (NEED CODING SCHEME - DANIELLE)
+st0094 <- foreign::read.spss("st0094_RewP_sx.sav", to.data.frame = T)
+psych_94 <- dplyr::select(st0094, subname, AGE, GENDER, SLEEP,
+                          HEIGHT, WEIGHT,
+                          CAFFEINE, RACE,
+                          gd_tot, dys_tot, las_tot, ins_tot,
+                          sui_tot, al_tot, ag_tot, tem_tot,
+                          wb_tot, sa_tot, pan_tot, ti_tot)
+
+psych_94 <- psych_94 %>%
+  rename(SUBNAME = subname)
+
+
+# TODO RACE
+psych_94$RACE <- gsub("999", NA, psych_94$RACE)
+psych_94$RACE <- as.numeric(psych_94$RACE)
+psych_94$RACE <- gsub("1", "Caucasian", psych_94$RACE)
+psych_94$RACE <- gsub("2", "African American", psych_94$RACE)
+
+# SUBNAME
+psych_94$SUBNAME <- trimws(psych_94$SUBNAME)
+
+# GENDER
+psych_94$GENDER <- trimws(psych_94$GENDER)
+psych_94$GENDER <- gsub("male", "Male", psych_94$GENDER)
+psych_94$GENDER <- gsub("feMale", "Female", psych_94$GENDER)
+psych_94$GENDER <- gsub("999", NA, psych_94$GENDER)
+psych_94$GENDER <- as.factor(psych_94$GENDER)
+
+# SLEEP
+psych_94$SLEEP <- as.numeric(psych_94$SLEEP)
+
+# HEIGHT
+psych_94$HEIGHT <- gsub("'", " ", psych_94$HEIGHT)
+psych_94$HEIGHT <- gsub("''", "", psych_94$HEIGHT)
+psych_94$HEIGHT <- gsub("     ", "", psych_94$HEIGHT)
+psych_94$HEIGHT <- gsub("  ", " ", psych_94$HEIGHT)
+psych_94$HEIGHT <- trimws(psych_94$HEIGHT)
+psych_94$HEIGHT <- as.numeric(psych_94$HEIGHT)
+psych_94$HEIGHT <- psych_94$HEIGHT * 12
+
+# CAFFEINE
+psych_94$CAFFEINE <- trimws(psych_94$CAFFEINE)
+psych_94$CAFFEINE <- gsub("3, 4", "3.5", psych_94$CAFFEINE)
+psych_94$CAFFEINE <- gsub("0-1", "0.5", psych_94$CAFFEINE)
+psych_94$CAFFEINE <- gsub("1-2", "1.5", psych_94$CAFFEINE)
+psych_94$CAFFEINE <- gsub("2, 5", "3.5", psych_94$CAFFEINE)
+psych_94$CAFFEINE <- gsub("1 caffeine pill", "1", psych_94$CAFFEINE)
+# Convert 300-500mg (400mg) to 4 cups of coffee
+psych_94$CAFFEINE <- gsub("300-500mg", "4", psych_94$CAFFEINE)
+psych_94$CAFFEINE <- gsub("400", "4", psych_94$CAFFEINE)
+# Remove outliers
+psych_94$CAFFEINE <- gsub("42165", NA, psych_94$CAFFEINE)
+psych_94$CAFFEINE <- gsub("42006", NA, psych_94$CAFFEINE)
+psych_94$CAFFEINE <- gsub("999", NA, psych_94$CAFFEINE)
+psych_94$CAFFEINE <- as.numeric(psych_94$CAFFEINE)
+
+summary(psych_94)
+
+### STUDY 96
+# TODO RACE CODING SCHEME
+
+st0096 <- foreign::read.spss("st96_PPT_Info_merged.sav", to.data.frame = T)
+st0096_idas <- foreign::read.spss("st96_IDAS_mergedscored.sav", to.data.frame = T)
+psych1_96 <- st0096 %>%
+  dplyr::select(SUBNAME, AGE = Age, GENDER = Gender, SLEEP = Sleep, 
+                HEIGHT = Height, WEIGHT = Weight, 
+                CAFFEINE = Caffeine, RACE = Race)
+psych2_96 <- dplyr::select(st0096_idas, SUBNAME,
+                           gd_tot, dys_tot, las_tot, ins_tot,
+                           sui_tot, al_tot, ag_tot, tem_tot,
+                           wb_tot, sa_tot, pan_tot, ti_tot)
+psych_96 <- merge(psych1_96, psych2_96, all.x = T, all.y = T, by.x = "SUBNAME", by.y = "SUBNAME")
+
+# SUBNAME
+psych_96$SUBNAME <- trimws(psych_96$SUBNAME)
+
+# GENDER, ASSUMING MALE = 1, FEMALE = 2
+psych_96$GENDER <- gsub("999", NA, psych_96$GENDER)
+psych_96$GENDER <- gsub("1", "Male", psych_96$GENDER)
+psych_96$GENDER <- gsub("2", "Female", psych_96$GENDER)
+psych_96$GENDER <- as.factor(psych_96$GENDER)
+
+# T-test for anxiety and depression to check for female coding, 
+t.test(gd_tot ~ GENDER, psych_96)
+
+# SLEEP
+psych_96$SLEEP <- as.numeric(psych_96$SLEEP)
+psych_96$SLEEP[psych_96$SLEEP > 24 | psych_96$SLEEP < 0] <- NA
+
+# HEIGHT
+# Convert height to inches
+psych_96$HEIGHT <- trimws(psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("'", " ", psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("\"", "", psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("''", "\"", psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("5.10.", 5.10, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("5 11  ", 5.9, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("5 2  ", 5.17, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("6 1  ", 6.1, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("5 7  ", 5.58, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("5 5  ", 5.42, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("6 2", 6.16, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("5 11", 5.11, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("5 2", 5.9, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("6 1", 6.1, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("5 7", 5.7, psych_96$HEIGHT)
+psych_96$HEIGHT <- gsub("63", 5.25, psych_96$HEIGHT)
+psych_96$HEIGHT <- as.numeric(psych_96$HEIGHT)
+psych_96$HEIGHT <- psych_96$HEIGHT * 12
+
+# WEIGHT
+psych_96$WEIGHT <- gsub("^\\s+|\\s+$", "", psych_96$WEIGHT)
+psych_96$WEIGHT <- gsub("lbs", "", psych_96$WEIGHT)
+psych_96$WEIGHT <- gsub("999", NA, psych_96$WEIGHT)
+psych_96$WEIGHT <- as.numeric(psych_96$WEIGHT)
+
+# CAFFEINE
+psych_96$CAFFEINE <- trimws(psych_96$CAFFEINE)
+psych_96$CAFFEINE <- gsub("42769", NA, psych_96$CAFFEINE)
+psych_96$CAFFEINE <- as.numeric(psych_96$CAFFEINE)
+
+# RACE
+psych_96$RACE <- gsub("999", NA, psych_96$RACE)
+
+summary(psych_96)
+
+### STUDY 100
+data2_100_scores <- foreign::read.spss("st0100_merged_questionnaire_scores.sav", to.data.frame = T)
+data2_100_raw <- foreign::read.spss("st0100_merged_questionnaires_raw.sav", to.data.frame = T)
+psych1_100 <- dplyr::select(data2_100_raw, SubjectID, Age, Gender,
+                            Height, Weight, 
+                            Race, Caffeine,
+                            Sleep.0)
+
+# Replace "p" with "s" in data2_100_scores
+data2_100_scores[[1]] <- gsub("p", "s", data2_100_scores[[1]])
+psych2_100 <- dplyr::select(data2_100_scores, SubjectID, 
+                            gd_tot, dys_tot, las_tot, ins_tot,
+                            sui_tot, al_tot, ag_tot, tem_tot,
+                            wb_tot, sa_tot, pan_tot, ti_tot)
+
+psych_100 <- merge(psych1_100, psych2_100, all.x = T, all.y = F, by.x = "SubjectID", by.y = "SubjectID")
+
+psych_100 <- psych_100 %>%
+  rename(SUBNAME = SubjectID, AGE = Age, GENDER = Gender, SLEEP = Sleep.0, 
+         HEIGHT = Height, WEIGHT = Weight, 
+         CAFFEINE = Caffeine, RACE = Race)
+
+# SUBNAME
+psych_100$SUBNAME <- trimws(psych_100$SUBNAME)
+psych_100$SUBNAME <- gsub("_s", "_p", psych_100$SUBNAME)
+
+# GENDER
+psych_100$GENDER <- trimws(psych_100$GENDER)
+psych_100$GENDER <- as.factor(psych_100$GENDER)
+
+# HEIGHT
+psych_100$HEIGHT <- trimws(psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("'", ".", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("\"", "", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("6.", "6.0", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("1.63m", "5.4", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.6.0", "5.6", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("1.6.0m", "5.24", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.3 3/4", "5.3", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.6.03/4", "5.6", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("73 in", "6.0", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5-10", "5.8", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5 foot", "5.0", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5,10", "5.8", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5 foot one inch", "5.1", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.2..", "5.2", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.4..", "5.4", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5 feet 3 inches", "5.25", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("6.0feet", "6.0", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("76.0inches", "6.3", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5`3", "5.3", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("6.0 0", "6.0", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5 foot 8in", "5.67", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.7ft", "5.7", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("6.0 inches", "6.0", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.0 8in", "5.67", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.0 one inch", "5.1", psych_100$HEIGHT)
+psych_100$HEIGHT <- gsub("5.63/4", "5.6", psych_100$HEIGHT)
+psych_100$HEIGHT <- as.numeric(psych_100$HEIGHT)
+psych_100$HEIGHT <- psych_100$HEIGHT * 12
+
+# WEIGHT
+psych_100$WEIGHT <- gsub("^\\s+|\\s+$", "", psych_100$WEIGHT)
+psych_100$WEIGHT <- gsub("lbs", "", psych_100$WEIGHT)
+psych_100$WEIGHT <- gsub("999", NA, psych_100$WEIGHT)
+psych_100$WEIGHT <- as.numeric(psych_100$WEIGHT)
+
+# CAFFEINE
+psych_100$CAFFEINE <- trimws(psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("0-1", "0.5", psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("1-2", "1.5", psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("Not very much", NA, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("1 cup coffee", "1", psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("1 soda", "1", psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("3 cups", "3", psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("2 cans of coke", 2, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("0-8oz", 0.5, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("1 can or cup of coffee", 1, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("1 cup", 1, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("2 cups of coffee/tea", 2, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("0, sometimes 1", 0.5, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("Less than 1", 0.5, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("Zero", 0, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("700", NA, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("2 cups coffee", 2, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("2 cups", 1, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("2-3", 2.5, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("One", 1, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- gsub("I drink Arizona tea", NA, psych_100$CAFFEINE)
+psych_100$CAFFEINE <- as.numeric(psych_100$CAFFEINE)
+
+# SLEEP
+psych_100$SLEEP <- trimws(psych_100$SLEEP)
+psych_100$SLEEP <- gsub("5.5-8.0", "6.75", psych_100$SLEEP)
+psych_100$SLEEP <- gsub("7-8", "7.5", psych_100$SLEEP)
+psych_100$SLEEP <- gsub("7.5-8.0", "7.75", psych_100$SLEEP)
+psych_100$SLEEP <- gsub("8-9", "8.5", psych_100$SLEEP)
+psych_100$SLEEP <- gsub("6-8", "7", psych_100$SLEEP)
+psych_100$SLEEP <- gsub("~7", "7", psych_100$SLEEP)
+psych_100$SLEEP <- gsub("8 and 1/2", "8.5", psych_100$SLEEP)
+psych_100$SLEEP <- gsub("^$", NA, psych_100$SLEEP)
+psych_100$SLEEP <- gsub("^0$", NA, psych_100$SLEEP)
+psych_100$SLEEP <- as.numeric(psych_100$SLEEP)
+summary(psych_100)
+
+
+### TODO STUDY 102
+# TODO !!! DATA LOOKS WRONG FOR HEIGHT & WEIGHT FOR FIRST 24 PARTICIPANTS
+st0102 <- foreign::read.spss("st0102_merged_questionnaire_raw.sav", to.data.frame = T)
+st0102_idas <- foreign::read.spss("st0102_questionnaires_scored_p1001tos1092.sav", to.data.frame = T)
+
+psych1_102 <- st0102 %>%
+  dplyr::select(SUBNAME = Q1, AGE = Age, GENDER = Gender, SLEEP = Sleep, 
+                HEIGHT = Height, WEIGHT = Weight, 
+                CAFFEINE = Caffeine, RACE = Race)
+
+psych2_102 <- st0102_idas %>%
+  dplyr::select(SUBNAME = subname,
+                gd_tot, dys_tot, las_tot, ins_tot,
+                sui_tot, al_tot, ag_tot, tem_tot,
+                wb_tot, sa_tot, pan_tot, ti_tot)
+psych_102 <- merge(psych1_102, psych2_102, all.x = T, all.y = F, by.x = "SUBNAME", by.y = "SUBNAME")
+
+# SUBNAME
+psych_102$SUBNAME <- trimws(psych_102$SUBNAME)
+
+# GENDER
+psych_102$GENDER <- trimws(psych_102$GENDER)
+psych_102$GENDER <- as.factor(psych_102$GENDER)
+
+# SLEEP
+psych_102$SLEEP <- trimws(psych_102$SLEEP)
+psych_102$SLEEP <- gsub("1-2", "1.5", psych_102$SLEEP)
+psych_102$SLEEP <- gsub(",1.5", "1.5", psych_102$SLEEP)
+psych_102$SLEEP <- gsub("5 1/2", "5.5", psych_102$SLEEP)
+psych_102$SLEEP <- gsub("7-8", "7.5", psych_102$SLEEP)
+psych_102$SLEEP <- gsub("7,5", "7.5", psych_102$SLEEP)
+psych_102$SLEEP <- gsub("8 hours", "8", psych_102$SLEEP)
+psych_102$SLEEP <- gsub("7 1/2", "7.5", psych_102$SLEEP)
+psych_102$SLEEP <- gsub("^$", NA, psych_102$SLEEP)
+psych_102$SLEEP <- gsub("^0$", NA, psych_102$SLEEP)
+psych_102$SLEEP <- as.numeric(psych_102$SLEEP)
+
+# CAFFEINE
+psych_102$CAFFEINE <- trimws(psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("1 cup coffee", "1", psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("8 oz coffee", "1", psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("1 can of soda", "1", psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("1-2", "1.5", psych_102$CAFFEINE)
+psych_100$CAFFEINE <- gsub("1cup", "1", psych_100$CAFFEINE)
+psych_102$CAFFEINE <- gsub("1 bottle", NA, psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("0.5 cups", 0.5, psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("1\2 cup", 0.5, psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("Max 1 coffee", 1, psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("Occasional soda", 0, psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("1 cup", 1, psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("2 cups of coffee", 2, psych_102$CAFFEINE)
+psych_102$CAFFEINE <- gsub("1 small cup of coffee", 2, psych_102$CAFFEINE)
+psych_102$CAFFEINE <- as.numeric(psych_102$CAFFEINE)
+summary(psych_102$CAFFEINE)
+
+
+# WEIGHT
+# TODO !!! DATA LOOKS WRONG FOR HEIGHT & WEIGHT FOR FIRST 24 PARTICIPANTS
+psych_102$WEIGHT <- trimws(psych_102$WEIGHT)
+psych_102$WEIGHT <- gsub("^\\s+|\\s+$", "", psych_102$WEIGHT)
+psych_102$WEIGHT <- gsub("lbs", "", psych_102$WEIGHT)
+psych_102$WEIGHT <- gsub("lb", "", psych_102$WEIGHT)
+psych_102$WEIGHT <- gsub(" lbs", "", psych_102$WEIGHT)
+psych_102$WEIGHT <- gsub(" Ibs", "", psych_102$WEIGHT)
+psych_102$WEIGHT <- as.numeric(psych_102$WEIGHT)
+psych_102$WEIGHT[1:24] <- NA
+
+
+# HEIGHT
+psych_102$HEIGHT[1:24] <- NA
+psych_102$HEIGHT <- trimws(psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("\"", "", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("'", ".", psych_102$HEIGHT) 
+psych_102$HEIGHT <- gsub(" +", " ", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("5. 10", "5.10", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("5.4..", "5.4", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("6 feet", "6.0", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("62 inches", "5.2", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("69 inches", "5.75", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("54", "5.4", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("57", "5.7", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("5 ft 3 in", "5.3", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("5ft 8in", "5.8", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("1.7m", "5.5", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("72 in", "6.0", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("6 ft 2 in", "6.2", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("5ft", "5.0", psych_102$HEIGHT)
+psych_102$HEIGHT <- gsub("59", "5.9", psych_102$HEIGHT)
+psych_102$HEIGHT <- as.numeric(psych_102$HEIGHT)
+psych_102$HEIGHT <- psych_102$HEIGHT * 12
+
+summary(psych_102)
+
+
+### TODO STUDY 104
+# TODO !! Half of the participants missing psychodemographic data
+# TODO HEIGHT
+st0104 <- foreign::read.spss("st0104_IDAS_scored.sav", to.data.frame = T)
+st0104 <- st0104 %>%
+  mutate(
+    RACE = case_when(
+      Race_White == "White" ~ "White",
+      Race_Black == "Black or African American" ~ "Black",
+      Race_AmerInd == "American Indian or Alaska Native" ~ "American Indian",
+      Race_AsianInd == "Asian Indian" ~ "Asian Indian",
+      Race_Chinese == "Chinese" ~ "Chinese",
+      Race_Filipino == "Filipino" ~ "Filipino"
+    )
+  )
+
+psych_104 <- st0104 %>%
+  dplyr::select(SUBNAME = Subj_ID, AGE = Age, GENDER = Gender, SLEEP = Sleep, 
+                HEIGHT = Height, WEIGHT = Weight, 
+                CAFFEINE = Caffeine, RACE,
+                gd_tot, dys_tot, las_tot, ins_tot,
+                sui_tot, al_tot, ag_tot, tem_tot,
+                wb_tot, sa_tot, pan_tot, ti_tot)
+
+# SUBNAME
+psych_104$SUBNAME <- trimws(psych_104$SUBNAME)
+
+# AGE
+psych_104$AGE <- as.numeric(psych_104$AGE)
+
+# RACE
+psych_104$RACE <- as.factor(psych_104$RACE)
+
+# TODO HEIGHT
+psych_104$HEIGHT <- trimws(psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("\"", "", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("'", ".", psych_104$HEIGHT) 
+psych_104$HEIGHT <- gsub("74", "6.1", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("5 foot 8 inches", "5.8", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("6 feet", "6.0", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("6 foot", "6.0", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("5 feet 4 inches", "5.4", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("63 inches", "5.25", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("64 inches", "5.25", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("5feet", "5.0", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("5ft 3in", "5.3", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("6ft", "6.0", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("5ft 2in", "5.2", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("5.9..", "5.9", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("5,11", "5.9", psych_104$HEIGHT)
+psych_104$HEIGHT <- gsub("6 ft", "6.0", psych_104$HEIGHT)
+psych_104$HEIGHT <- as.numeric(psych_104$HEIGHT)
+psych_104$HEIGHT <- psych_104$HEIGHT * 12
+
+# WEIGHT
+psych_104$WEIGHT <- trimws(psych_104$WEIGHT)
+psych_104$WEIGHT <- gsub("lbs", "", psych_104$WEIGHT)
+psych_104$WEIGHT <- gsub(" lb", "", psych_104$WEIGHT)
+psych_104$WEIGHT <- gsub(" lbs", "", psych_104$WEIGHT)
+psych_104$WEIGHT <- gsub(" pounds", "", psych_104$WEIGHT)
+psych_104$WEIGHT <- gsub("^$", NA, psych_104$WEIGHT)
+psych_104$WEIGHT <- as.numeric(psych_104$WEIGHT)
+
+# SLEEP
+psych_104$SLEEP <- trimws(psych_104$SLEEP)
+psych_104$SLEEP <- gsub(" hours", "", psych_104$SLEEP)
+psych_104$SLEEP <- gsub("8 to 10", "9", psych_104$SLEEP)
+psych_104$SLEEP <- gsub("6/7", "6.5", psych_104$SLEEP)
+psych_104$SLEEP <- gsub("^$", NA, psych_104$SLEEP)
+psych_104$SLEEP <- gsub("^0$", NA, psych_104$SLEEP)
+psych_104$SLEEP <- as.numeric(psych_104$SLEEP)
+
+# CAFFEINE
+psych_104$CAFFEINE <- trimws(psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("2 cups of coffee/soda", 2, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("Cup of coffee", 1, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("1 cup of coffee", 1, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("None", 0, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("8 oz", 1, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("4 cups of tea", 4, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("2-3 cups", 2.5, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("1 can of soda", 1, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- gsub("2 or less", 2, psych_104$CAFFEINE)
+psych_104$CAFFEINE <- as.numeric(psych_104$CAFFEINE)
+summary(psych_104$CAFFEINE)
+
+
+# TODO STUDY 107
+# TODO: IDAS - score raw values. Keanan has script
+# TODO: Clean HEIGHT, WEIGHT, CAFFEINE
+st0107_old <- foreign::read.spss("st0107_Demographics_RAW.sav", to.data.frame = T)
+st0107_new <- foreign::read.spss("st0107_SurveyV1-V2-V3-V3IP-IPadditions_2021-12-3_EMA-PPT.sav", to.data.frame = T)
+
+psych_107 <- st0107_new %>%
+  dplyr::select(SUBNAME, AGE = Age, GENDER = gender, SLEEP = sleep, 
+                HEIGHT = height, WEIGHT = weight, 
+                CAFFEINE = caffeine_day, RACE = race)
+
+# TODO: Replace NAs with actual values
+idas_columns = c("gd_tot", "dys_tot", "las_tot", "ins_tot",
+                  "sui_tot", "al_tot", "ag_tot", "tem_tot",
+                  "wb_tot", "sa_tot", "pan_tot", "ti_tot")
+# Add NAs
+for (column in idas_columns) {
+  if (!column %in% names(psych_107)) {
+    psych_107[[column]] <- NA
+  }
+}
+
+# AGE
+psych_107$AGE <- as.numeric(psych_107$AGE)
+
+# RACE
+psych_107$RACE <- as.factor(psych_107$RACE)
+
+# SLEEP
+psych_107$SLEEP <- trimws(psych_107$SLEEP)
+psych_107$SLEEP <- gsub(" hours", "", psych_107$SLEEP)
+psych_107$SLEEP <- gsub(" off and on", "", psych_107$SLEEP)
+psych_107$SLEEP <- gsub(":", ".", psych_107$SLEEP)
+psych_107$SLEEP <- as.numeric(psych_107$SLEEP)
+
+
+# MERGE ALL PSYCH + ERP + LOG DATA ---------------
+erplogpsych_86 <- merge(erplog_86, psych_86, all.x = F, all.y = F, by.x = "subname", by.y = "SUBNAME")
+erplogpsych_94 <- merge(erplog_94, psych_94, all.x = F, all.y = F, by.x = "subname", by.y = "SUBNAME")
+erplogpsych_96 <- merge(erplog_96, psych_96, all.x = F, all.y = F, by.x = "subname", by.y = "SUBNAME")
+erplogpsych_100 <- merge(erplog_100, psych_100, all.x = F, all.y = F, by.x = "subname", by.y = "SUBNAME")
+erplogpsych_102 <- merge(erplog_102, psych_102, all.x = F, all.y = F, by.x = "subname", by.y = "SUBNAME")
+erplogpsych_104 <- merge(erplog_104, psych_104, all.x = F, all.y = F, by.x = "subname", by.y = "SUBNAME")
+erplogpsych_107 <- merge(erplog_107, psych_107, all.x = T, all.y = F, by.x = "subname", by.y = "SUBNAME")
+
+data_all <- rbind(erplogpsych_86, erplogpsych_94, erplogpsych_96, erplogpsych_100, erplogpsych_102, erplogpsych_104, erplogpsych_107)
+
+```
+```{r add variables}
+# Time variable (DOORS START)
+data_all$doors_start <- format(as.POSIXct(data_all$doors_start,format='%I:%M %p'),format="%H:%M:%S")
+
+# data_all <- data_all[complete.cases(data_all),]
+
+data_all$RefDate <- "10/19/2024"
+data_all$RefTime <- "00:00:00"
+
+data_all$Ref <- as.POSIXct(paste(data_all$RefDate, data_all$RefTime), format="%m/%d/%Y %H:%M:%S")
+data_all$doors_start2 <- as.POSIXct(paste(data_all$RefDate, data_all$doors_start), format="%m/%d/%Y %H:%M:%S")
+data_all$Time <- as.numeric(data_all$doors_start2 - data_all$Ref)
+
+# Hookup Times
+data_all$hookups_start <- format(as.POSIXct(data_all$hookups_start,format='%I:%M %p'),format="%H:%M:%S")
+
+# Study 107 currently has NAs for hookups_start and some demographic variables so don't use the line below
+# data_all <- data_all[complete.cases(data_all),]
+
+data_all$RefDate <- "10/19/2024"
+data_all$RefTime <- "00:00:00"
+
+data_all$Ref <- as.POSIXct(paste(data_all$RefDate, data_all$RefTime), format="%m/%d/%Y %H:%M:%S")
+data_all$hookups_start2 <- as.POSIXct(paste(data_all$RefDate, data_all$hookups_start), format="%m/%d/%Y %H:%M:%S")
+data_all$HookupsTime <- as.numeric(data_all$hookups_start2 - data_all$Ref)
+
+data_all$StudyLength <- data_all$doors_start2 - data_all$hookups_start2
+data_all$StudyLength[data_all$StudyLength < 0] <- NA
+
+
+# Cap Type
+data_all$Cap <- NA
+
+# Studies with similar type of cap (128 Channel Cap)
+data_all$Cap[data_all$Study == "86"] <- 0
+data_all$Cap[data_all$Study == "94"] <- 0
+data_all$Cap[data_all$Study == "96"] <- 0
+data_all$Cap[data_all$Study == "100"] <- 0
+
+# Studies with similar type of cap (64 Channel Cap)
+data_all$Cap[data_all$Study == "102"] <- 1
+data_all$Cap[data_all$Study == "104"] <- 1
+data_all$Cap[data_all$Study == "107"] <- 1
+
+# Seasonality
+
+data_all$Season <- NA
+
+data_all$Season[data_all$Study == "86"] <- "Fall" # November
+data_all$Season[data_all$Study == "94"] <- "Fall" # November and early December
+data_all$Season[data_all$Study == "96"] <- "Spring" # April
+data_all$Season[data_all$Study == "100"] <- "Summer" # May
+data_all$Season[data_all$Study == "102"] <- "Summer" # May
+data_all$Season[data_all$Study == "104"] <- "Summer" # June
+data_all$Season[data_all$Study == "107"] <- "Summer" # June
+
+# BMI = Weight/Height
+
+data_all$BMI <- with(data_all, ifelse(
+  is.numeric(WEIGHT) & is.numeric(HEIGHT),
+  (WEIGHT * 703) / (HEIGHT^2),
+  NA
+))
+
+# categorical data prep
+
+data_all$GENDER <- as.character(data_all$GENDER)
+data_all$GENDER[data_all$GENDER == "Female"] <- 0
+data_all$GENDER[data_all$GENDER == "Male"] <- 1
+data_all$GENDER <- as.numeric(data_all$GENDER)
+
+data_all$Sleep_bin <- data_all$SLEEP
+data_all$Sleep_bin[data_all$Sleep_bin < 6] <- 0
+data_all$Sleep_bin[data_all$Sleep_bin >= 6 & data_all$Sleep_bin < 7.5] <- 1
+data_all$Sleep_bin[data_all$Sleep_bin >= 7.5 & data_all$Sleep_bin < 9] <- 2
+data_all$Sleep_bin[data_all$Sleep_bin >= 9] <- 3
+
+data_all$StudyLength_bin <- data_all$StudyLength
+data_all$StudyLength_bin[data_all$StudyLength_bin < 120] <- 0
+data_all$StudyLength_bin[data_all$StudyLength_bin >= 120 & data_all$StudyLength < 180] <- 1
+data_all$StudyLength_bin[data_all$StudyLength_bin >= 180 & data_all$StudyLength < 240] <- 2
+data_all$StudyLength_bin[data_all$StudyLength_bin >= 240] <- 3
+
+# Format date and get previous day's date
+data_all$date <- as.Date(data_all$date, format = "%m-%d-%Y")
+data_all$prev_date <- data_all$date - days(1)
+
+# FSU coordinates
+fsu_lat <- 30.4419
+fsu_lon <- -84.2985
+
+# Calculate sunrise and sunset times for previous day's dates
+sun_times <- getSunlightTimes(
+  date = data_all$prev_date,
+  lat = fsu_lat,
+  lon = fsu_lon,
+  keep = c("sunrise", "sunset")
+)
+
+# Calculate hours of daylight and add to data_all
+data_all$daylight_hours <- as.numeric(difftime(sun_times$sunset, sun_times$sunrise, units = "hours"))
+
+
+#fit <- cosinor.lm(RewP_Cz ~ time(Time), data_all, period = 7.966667)
+```
+
+
+## Fitting a Basic Cosinor Model
+
+One can fit the cosinor model using several approaches. We highlight the `cosinor` package, designed for cosinor models. We will also use `lm` and the `nls` function from stats, which can perform nonlinear fitting. For the following fits, we assume the period $T=24$.
+
+We'll first import the data and construct the cosine and sine features:
+
+```{r import_data}
+#data <- read.csv("Joyner data.csv")
+
+data <- data_all
+
+```
+
+```{r period}
+PERIOD <- 7.966667
+```
+
+```{r cos_features}
+# Construct new cosine and sine features
+data['cos_t'] <- cos(2 * pi * data$Time / PERIOD)
+data['sin_t'] <- sin(2 * pi * data$Time / PERIOD)
+```
+
+The cosinor package fits the reduced form, not the original cosine function, to obtain estimates of $\beta_1$ and $\beta_2$. These are referred to as `rrr` and `sss` in the `raw.table`:
+
+```{r cosinor_fit}
+# Fit a basic cosinor model
+fit_cosinor <- cosinor.lm(RewP_Cz ~ time(Time), data, period = PERIOD)
+
+summary(fit_cosinor)$raw.table
+```
+
+The `cosinor` package is effectively calling the `lm` function under the hood, which we can double check:
+
+```{r lm_fit}
+fit_lm <- lm(RewP_Cz ~ cos_t + sin_t, data = data)
+
+summary(fit_lm)
+```
+
+We have $M$, but we'd like the acrophase and amplitude. `cosinor` provides this in a separate table:
+
+```{r transformed_table}
+summary(fit_cosinor)$transformed.table
+```
+
+We can reconstruct these values using the formulas above. We'll use a dedicated function for this:
+
+```{r transform_function}
+# Transform the beta parameters from the reduced cosinor model to their original form
+transform_cosinor <- function(beta1, beta2) {
+  # Calculate amplitude
+  amp <- sqrt(beta1^2 + beta2^2)
+  # Calculate acrophase
+  acr <- atan2(beta2, beta1)
+  # acr <- atan(beta2 / beta1)
+  return(c(amp = amp, acr = acr))
+}
+```
+
+```{r transformed_coefs}
+beta1 <- coef(fit_lm)['cos_t'][[1]]
+beta2 <- coef(fit_lm)['sin_t'][[1]]
+transform_cosinor(beta1, beta2)
+```
+
+Note, however, cosinor has added the standard errors and p-values for these new variables. It did so using the **delta method**, which we can replicate using the `deltaMethod` function from the `car` package:
+
+```{r delta_method}
+# Apply delta method to the underlying lm fit, with specified formula
+delta <- deltaMethod(fit_cosinor$fit, "sqrt(rrr^2 + sss^2)")
+
+# Extract the coefficient values and standard error
+coef <- coef(fit_cosinor)['amp']
+se <- as.numeric(delta['SE'])
+
+# Calculate p-value (assumes normal distribution for coefficient)
+p_val_from_se <- function(coef, se) {
+  pval <- 2 * (1 - pnorm(abs(as.numeric(coef / se))))
+  return(pval)
+}
+pval <- p_val_from_se(coef, se)
+
+print(se)
+print(pval)
+```
+
+We can do the same for the acrophase:
+
+```{r delta_method_acrophase}
+# Apply delta method to the underlying lm fit, with specified formula
+delta <- deltaMethod(fit_cosinor$fit, "atan(sss / rrr)")
+
+# Extract the coefficient values and standard error
+coef <- coef(fit_cosinor)['acr']
+se <- as.numeric(delta['SE'])
+
+pval <- p_val_from_se(coef, se)
+
+print(se)
+print(pval)
+```
+
+
+The values match very closely for the parameter estimate and standard errors.
+
+We can plot the resulting cosine curve. We'll first construct it by hand using the coefficients, and we'll use the built in cosinor plotting function to double check our outputs:
+
+```{r generate_preds}
+M <- coef(fit_cosinor)['(Intercept)']
+amp <- coef(fit_cosinor)['amp']
+acr <- coef(fit_cosinor)['acr']
+times <- seq(10, 18, length.out = 200)
+
+y_preds <- M + amp * cos(2 * pi * times / PERIOD - acr)
+
+pred_df <- data.frame(times = times, y_preds = y_preds)
+```
+
+```{r plot_preds}
+plot <- ggplot_cosinor.lm(fit_cosinor) + 
+  geom_line(data = pred_df,
+            aes(x = times, y = y_preds),
+            color = "blue",
+            linewidth = 2,
+            linetype = "dashed") +
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal")
+show(plot)
+```
+
+We can also add in the original data to the plot:
+
+```{r plot_preds_w_data}
+plot <- ggplot_cosinor.lm(fit_cosinor) + 
+  geom_line(data = pred_df,
+            aes(x = times, y = y_preds),
+            color = "blue",
+            linewidth = 2,
+            linetype = "dashed") +
+  geom_point(data = data,
+             aes(x = Time, y = RewP_Cz)) +
+  xlim(10, 19) + ylim(-15, 20) +
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal")
+show(plot)
+
+```
+```{r rewp_time}
+# faceting by study
+fit_cosinor[[1]]<- cosinor.lm(RewP_Cz ~ time(Time), data[data$Study == "86",], period = PERIOD)
+fit_cosinor[[2]]<- cosinor.lm(RewP_Cz ~ time(Time), data[data$Study == "94",], period = PERIOD)
+fit_cosinor[[3]]<- cosinor.lm(RewP_Cz ~ time(Time), data[data$Study == "96",], period = PERIOD)
+fit_cosinor[[4]]<- cosinor.lm(RewP_Cz ~ time(Time), data[data$Study == "100",], period = PERIOD)
+fit_cosinor[[5]]<- cosinor.lm(RewP_Cz ~ time(Time), data[data$Study == "102",], period = PERIOD)
+fit_cosinor[[6]]<- cosinor.lm(RewP_Cz ~ time(Time), data[data$Study == "104",], period = PERIOD)
+fit_cosinor[[7]]<- cosinor.lm(RewP_Cz ~ time(Time), data[data$Study == "107",], period = PERIOD)
+
+# st0086
+M <- coef(fit_cosinor[[1]])['(Intercept)']
+amp <- coef(fit_cosinor[[1]])['amp']
+acr <- coef(fit_cosinor[[1]])['acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds <- M + amp * cos(2 * pi * times / PERIOD - acr)
+pred_df <- data.frame(times = times, y_preds = y_preds)
+pred_df$Study <- 'st0086'
+
+# st0094
+M2 <- coef(fit_cosinor[[2]])['(Intercept)']
+amp2 <- coef(fit_cosinor[[2]])['amp']
+acr2 <- coef(fit_cosinor[[2]])['acr']
+times2 <- seq(10, 19, length.out = 200)
+
+y_preds2 <- M2 + amp2 * cos(2 * pi * times2 / PERIOD - acr2)
+pred_df2 <- data.frame(times = times2, y_preds = y_preds2)
+pred_df2$Study <- 'st0094'
+
+# st0096
+M3 <- coef(fit_cosinor[[3]])['(Intercept)']
+amp3 <- coef(fit_cosinor[[3]])['amp']
+acr3 <- coef(fit_cosinor[[3]])['acr']
+times3 <- seq(10, 19, length.out = 200)
+
+y_preds3 <- M3 + amp3 * cos(2 * pi * times3 / PERIOD - acr3)
+pred_df3 <- data.frame(times = times3, y_preds = y_preds3)
+pred_df3$Study <- 'st0096'
+
+# st0100
+M4 <- coef(fit_cosinor[[4]])['(Intercept)']
+amp4 <- coef(fit_cosinor[[4]])['amp']
+acr4 <- coef(fit_cosinor[[4]])['acr']
+times4 <- seq(10, 19, length.out = 200)
+
+y_preds4 <- M4 + amp4 * cos(2 * pi * times4 / PERIOD - acr4)
+pred_df4 <- data.frame(times = times4, y_preds = y_preds4)
+pred_df4$Study <- 'st0100'
+
+# st0102
+M5 <- coef(fit_cosinor[[5]])['(Intercept)']
+amp5 <- coef(fit_cosinor[[5]])['amp']
+acr5 <- coef(fit_cosinor[[5]])['acr']
+times5 <- seq(10, 19, length.out = 200)
+
+y_preds5 <- M5 + amp5 * cos(2 * pi * times5 / PERIOD - acr5)
+pred_df5 <- data.frame(times = times5, y_preds = y_preds5)
+pred_df5$Study <- 'st0102'
+
+# st0104
+M6 <- coef(fit_cosinor[[6]])['(Intercept)']
+amp6 <- coef(fit_cosinor[[6]])['amp']
+acr6 <- coef(fit_cosinor[[6]])['acr']
+times6 <- seq(10, 19, length.out = 200)
+
+y_preds6 <- M6 + amp6 * cos(2 * pi * times6 / PERIOD - acr6)
+pred_df6 <- data.frame(times = times6, y_preds = y_preds6)
+pred_df6$Study <- 'st0104'
+
+# st0107
+M7 <- coef(fit_cosinor[[7]])['(Intercept)']
+amp7 <- coef(fit_cosinor[[7]])['amp']
+acr7 <- coef(fit_cosinor[[7]])['acr']
+times7 <- seq(10, 19, length.out = 200)
+
+y_preds7 <- M7 + amp7 * cos(2 * pi * times7 / PERIOD - acr7)
+pred_df7 <- data.frame(times = times7, y_preds = y_preds7)
+pred_df7$Study <- 'st0107'
+
+
+# BINDING TOGETHER
+y_preds_all <- rbind(y_preds, y_preds2, y_preds3, y_preds4, y_preds5, y_preds7)
+pred_df_all <- rbind(pred_df, pred_df2, pred_df3, pred_df4, pred_df5, pred_df7)
+
+# PLOTTING ALL TOGETHER
+plot <- ggplot_cosinor.lm(fit_cosinor[[6]]) + 
+  geom_line(data = pred_df_all,
+            aes(x = times, y = y_preds, color = Study),
+            linewidth = 1,
+            linetype = "dashed") +
+  xlim(10, 19) + ylim(-2, 8) +
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal") +
+  ggtitle("Plot 1: RewP ~ Time")
+show(plot)
+```
+
+``` {r rewp_time_gender}
+
+fit_cosinor_gender <- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data[data$Study == "86",], period = PERIOD)
+  
+# adding in predictors
+fit_cosinor_gender[[1]]<- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data[data$Study == "86",], period = PERIOD)
+fit_cosinor_gender[[2]]<- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data[data$Study == "94",], period = PERIOD)
+fit_cosinor_gender[[3]]<- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data[data$Study == "96",], period = PERIOD)
+fit_cosinor_gender[[4]]<- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data[data$Study == "100",], period = PERIOD)
+fit_cosinor_gender[[5]]<- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data[data$Study == "102",], period = PERIOD)
+fit_cosinor_gender[[6]]<- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data[data$Study == "104",], period = PERIOD)
+fit_cosinor_gender[[7]]<- cosinor.lm(RewP_Cz ~ time(Time) + GENDER + amp.acro(GENDER), data[data$Study == "107",], period = PERIOD)
+
+# st0086
+M1 <- coef(fit_cosinor_gender[[1]])['(Intercept)']
+GENDER1 <- coef(fit_cosinor_gender[[1]])['GENDER']
+amp1 <- coef(fit_cosinor_gender[[1]])['amp']
+GENDER_amp1 <- coef(fit_cosinor_gender[[1]])['GENDER:amp']
+acr1 <- coef(fit_cosinor_gender[[1]])['acr']
+GENDER_acr1 <- coef(fit_cosinor_gender[[1]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds1 <- M1 + GENDER1 + (amp1 + GENDER_amp1) * cos(2 * pi * times / PERIOD - (acr1 + GENDER_acr1))
+pred_df1 <- data.frame(times = times, y_preds = y_preds1)
+pred_df1$Study <- 'st0086'
+
+# st0094
+M2 <- coef(fit_cosinor_gender[[2]])['(Intercept)']
+GENDER2 <- coef(fit_cosinor_gender[[2]])['GENDER']
+amp2 <- coef(fit_cosinor_gender[[2]])['amp']
+GENDER_amp2 <- coef(fit_cosinor_gender[[1]])['GENDER:amp']
+acr2 <- coef(fit_cosinor_gender[[2]])['acr']
+GENDER_acr2 <- coef(fit_cosinor_gender[[2]])['GENDER:acr']
+
+y_preds2 <- M2 + GENDER2 + (amp2 + GENDER_amp2) * cos(2 * pi * times / PERIOD - (acr2 + GENDER_acr2))
+pred_df2 <- data.frame(times = times, y_preds = y_preds2)
+pred_df2$Study <- 'st0094'
+
+# st0096
+M3 <- coef(fit_cosinor_gender[[3]])['(Intercept)']
+GENDER3 <- coef(fit_cosinor_gender[[3]])['GENDER']
+amp3 <- coef(fit_cosinor_gender[[3]])['amp']
+GENDER_amp3 <- coef(fit_cosinor_gender[[3]])['GENDER:amp']
+acr3 <- coef(fit_cosinor_gender[[3]])['acr']
+GENDER_acr3 <- coef(fit_cosinor_gender[[3]])['GENDER:acr']
+
+y_preds3 <- M3 + GENDER3 + (amp3 + GENDER_amp3) * cos(2 * pi * times / PERIOD - (acr3 + GENDER_acr3))
+pred_df3 <- data.frame(times = times, y_preds = y_preds3)
+pred_df3$Study <- 'st0096'
+
+# st0100
+M4 <- coef(fit_cosinor_gender[[4]])['(Intercept)']
+GENDER4 <- coef(fit_cosinor_gender[[4]])['GENDER']
+amp4 <- coef(fit_cosinor_gender[[4]])['amp']
+GENDER_amp4 <- coef(fit_cosinor_gender[[4]])['GENDER:amp']
+acr4 <- coef(fit_cosinor_gender[[4]])['acr']
+GENDER_acr4 <- coef(fit_cosinor_gender[[4]])['GENDER:acr']
+
+y_preds4 <- M4 + GENDER4 + (amp4 + GENDER_amp4) * cos(2 * pi * times / PERIOD - (acr4 + GENDER_acr4))
+pred_df4 <- data.frame(times = times, y_preds = y_preds4)
+pred_df4$Study <- 'st0100'
+
+# st0102
+M5 <- coef(fit_cosinor_gender[[5]])['(Intercept)']
+GENDER5 <- coef(fit_cosinor_gender[[5]])['GENDER']
+amp5 <- coef(fit_cosinor_gender[[5]])['amp']
+GENDER_amp5 <- coef(fit_cosinor_gender[[5]])['GENDER:amp']
+acr5 <- coef(fit_cosinor_gender[[5]])['acr']
+GENDER_acr5 <- coef(fit_cosinor_gender[[5]])['GENDER:acr']
+
+y_preds5 <- M5 + GENDER5 + (amp5 + GENDER_amp5) * cos(2 * pi * times / PERIOD - (acr5 + GENDER_acr5))
+pred_df5 <- data.frame(times = times, y_preds = y_preds5)
+pred_df5$Study <- 'st0102'
+
+# st0104
+M6 <- coef(fit_cosinor_gender[[6]])['(Intercept)']
+GENDER6 <- coef(fit_cosinor_gender[[6]])['GENDER']
+amp6 <- coef(fit_cosinor_gender[[6]])['amp']
+GENDER_amp6 <- coef(fit_cosinor_gender[[6]])['GENDER:amp']
+acr6 <- coef(fit_cosinor_gender[[6]])['acr']
+GENDER_acr6 <- coef(fit_cosinor_gender[[6]])['GENDER:acr']
+
+y_preds6 <- M6 + GENDER6 + (amp6 + GENDER_amp6) * cos(2 * pi * times / PERIOD - (acr6 + GENDER_acr6))
+pred_df6 <- data.frame(times = times, y_preds = y_preds6)
+pred_df6$Study <- 'st0104'
+
+# st0107
+M7 <- coef(fit_cosinor_gender[[7]])['(Intercept)']
+GENDER7 <- coef(fit_cosinor_gender[[7]])['GENDER']
+amp <- coef(fit_cosinor_gender[[7]])['amp']
+GENDER_amp7 <- coef(fit_cosinor_gender[[7]])['GENDER:amp']
+acr7 <- coef(fit_cosinor_gender[[7]])['acr']
+GENDER_acr7 <- coef(fit_cosinor_gender[[7]])['GENDER:acr']
+
+y_preds7 <- M7 + GENDER7 + (amp7 + GENDER_amp7) * cos(2 * pi * times / PERIOD - (acr7 + GENDER_acr7))
+pred_df7 <- data.frame(times = times, y_preds = y_preds7)
+pred_df7$Study <- 'st0107'
+
+# BINDING TOGETHER
+y_preds_gender <- rbind(y_preds1, y_preds2, y_preds3, y_preds4, y_preds5, y_preds7)
+pred_df_gender <- rbind(pred_df1, pred_df2, pred_df3, pred_df4, pred_df5, pred_df7)
+
+
+# PLOTTING ALL TOGETHER
+plot_GENDER <- ggplot_cosinor.lm(fit_cosinor_gender[[6]]) + 
+  geom_line(data = pred_df_gender,
+            aes(x = times, y = y_preds, color = Study),
+            linewidth = 1,
+            linetype = "dashed") +
+  xlim(10, 19) + ylim(-5, 7.5) +
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal") +
+  ggtitle("Plot 2: RewP ~ Time + Gender")
+show(plot_GENDER)
+```
+
+``` {r rewp_time_sleepbin}
+
+fit_cosinor_Sleep_bin <- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + amp.acro(Sleep_bin), data[data$Study == "86",], period = PERIOD)
+  
+# adding in predictors
+fit_cosinor_Sleep_bin[[1]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + amp.acro(Sleep_bin), data[data$Study == "86",], period = PERIOD)
+fit_cosinor_Sleep_bin[[2]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + amp.acro(Sleep_bin), data[data$Study == "94",], period = PERIOD)
+fit_cosinor_Sleep_bin[[3]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + amp.acro(Sleep_bin), data[data$Study == "96",], period = PERIOD)
+fit_cosinor_Sleep_bin[[4]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + amp.acro(Sleep_bin), data[data$Study == "100",], period = PERIOD)
+fit_cosinor_Sleep_bin[[5]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + amp.acro(Sleep_bin), data[data$Study == "102",], period = PERIOD)
+fit_cosinor_Sleep_bin[[6]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + amp.acro(Sleep_bin), data[data$Study == "104",], period = PERIOD)
+fit_cosinor_Sleep_bin[[7]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + amp.acro(Sleep_bin), data[data$Study == "107",], period = PERIOD)
+
+# st0086
+M1 <- coef(fit_cosinor_Sleep_bin[[1]])['(Intercept)']
+Sleep_bin1 <- coef(fit_cosinor_Sleep_bin[[1]])['Sleep_bin']
+amp1 <- coef(fit_cosinor_Sleep_bin[[1]])['amp']
+Sleep_bin_amp1 <- coef(fit_cosinor_Sleep_bin[[1]])['Sleep_bin:amp']
+acr1 <- coef(fit_cosinor_Sleep_bin[[1]])['acr']
+Sleep_bin_acr1 <- coef(fit_cosinor_Sleep_bin[[1]])['Sleep_bin:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds1 <- M1 + Sleep_bin1 + (amp1 + Sleep_bin_amp1) * cos(2 * pi * times / PERIOD - (acr1 + Sleep_bin_acr1))
+pred_df1 <- data.frame(times = times, y_preds = y_preds1)
+pred_df1$Study <- 'st0086'
+
+# st0094
+M2 <- coef(fit_cosinor_Sleep_bin[[2]])['(Intercept)']
+Sleep_bin2 <- coef(fit_cosinor_Sleep_bin[[2]])['Sleep_bin']
+amp2 <- coef(fit_cosinor_Sleep_bin[[2]])['amp']
+Sleep_bin_amp2 <- coef(fit_cosinor_Sleep_bin[[1]])['Sleep_bin:amp']
+acr2 <- coef(fit_cosinor_Sleep_bin[[2]])['acr']
+Sleep_bin_acr2 <- coef(fit_cosinor_Sleep_bin[[2]])['Sleep_bin:acr']
+
+y_preds2 <- M2 + Sleep_bin2 + (amp2 + Sleep_bin_amp2) * cos(2 * pi * times / PERIOD - (acr2 + Sleep_bin_acr2))
+pred_df2 <- data.frame(times = times, y_preds = y_preds2)
+pred_df2$Study <- 'st0094'
+
+# st0096
+M3 <- coef(fit_cosinor_Sleep_bin[[3]])['(Intercept)']
+Sleep_bin3 <- coef(fit_cosinor_Sleep_bin[[3]])['Sleep_bin']
+amp3 <- coef(fit_cosinor_Sleep_bin[[3]])['amp']
+Sleep_bin_amp3 <- coef(fit_cosinor_Sleep_bin[[3]])['Sleep_bin:amp']
+acr3 <- coef(fit_cosinor_Sleep_bin[[3]])['acr']
+Sleep_bin_acr3 <- coef(fit_cosinor_Sleep_bin[[3]])['Sleep_bin:acr']
+
+y_preds3 <- M3 + Sleep_bin3 + (amp3 + Sleep_bin_amp3) * cos(2 * pi * times / PERIOD - (acr3 + Sleep_bin_acr3))
+pred_df3 <- data.frame(times = times, y_preds = y_preds3)
+pred_df3$Study <- 'st0096'
+
+# st0100
+M4 <- coef(fit_cosinor_Sleep_bin[[4]])['(Intercept)']
+Sleep_bin4 <- coef(fit_cosinor_Sleep_bin[[4]])['Sleep_bin']
+amp4 <- coef(fit_cosinor_Sleep_bin[[4]])['amp']
+Sleep_bin_amp4 <- coef(fit_cosinor_Sleep_bin[[4]])['Sleep_bin:amp']
+acr4 <- coef(fit_cosinor_Sleep_bin[[4]])['acr']
+Sleep_bin_acr4 <- coef(fit_cosinor_Sleep_bin[[4]])['Sleep_bin:acr']
+
+y_preds4 <- M4 + Sleep_bin4 + (amp4 + Sleep_bin_amp4) * cos(2 * pi * times / PERIOD - (acr4 + Sleep_bin_acr4))
+pred_df4 <- data.frame(times = times, y_preds = y_preds4)
+pred_df4$Study <- 'st0100'
+
+# st0102
+M5 <- coef(fit_cosinor_Sleep_bin[[5]])['(Intercept)']
+Sleep_bin5 <- coef(fit_cosinor_Sleep_bin[[5]])['Sleep_bin']
+amp5 <- coef(fit_cosinor_Sleep_bin[[5]])['amp']
+Sleep_bin_amp5 <- coef(fit_cosinor_Sleep_bin[[5]])['Sleep_bin:amp']
+acr5 <- coef(fit_cosinor_Sleep_bin[[5]])['acr']
+Sleep_bin_acr5 <- coef(fit_cosinor_Sleep_bin[[5]])['Sleep_bin:acr']
+
+y_preds5 <- M5 + Sleep_bin5 + (amp5 + Sleep_bin_amp5) * cos(2 * pi * times / PERIOD - (acr5 + Sleep_bin_acr5))
+pred_df5 <- data.frame(times = times, y_preds = y_preds5)
+pred_df5$Study <- 'st0102'
+
+# st0104
+M6 <- coef(fit_cosinor_Sleep_bin[[6]])['(Intercept)']
+Sleep_bin6 <- coef(fit_cosinor_Sleep_bin[[6]])['Sleep_bin']
+amp6 <- coef(fit_cosinor_Sleep_bin[[6]])['amp']
+Sleep_bin_amp6 <- coef(fit_cosinor_Sleep_bin[[6]])['Sleep_bin:amp']
+acr6 <- coef(fit_cosinor_Sleep_bin[[6]])['acr']
+Sleep_bin_acr6 <- coef(fit_cosinor_Sleep_bin[[6]])['Sleep_bin:acr']
+
+y_preds6 <- M6 + Sleep_bin6 + (amp6 + Sleep_bin_amp6) * cos(2 * pi * times / PERIOD - (acr6 + Sleep_bin_acr6))
+pred_df6 <- data.frame(times = times, y_preds = y_preds6)
+pred_df6$Study <- 'st0104'
+
+# st0107
+M7 <- coef(fit_cosinor_Sleep_bin[[7]])['(Intercept)']
+Sleep_bin7 <- coef(fit_cosinor_Sleep_bin[[7]])['Sleep_bin']
+amp7 <- coef(fit_cosinor_Sleep_bin[[7]])['amp']
+Sleep_bin_amp7 <- coef(fit_cosinor_Sleep_bin[[7]])['Sleep_bin:amp']
+acr7 <- coef(fit_cosinor_Sleep_bin[[7]])['acr']
+Sleep_bin_acr7 <- coef(fit_cosinor_Sleep_bin[[7]])['Sleep_bin:acr']
+
+y_preds7 <- M7 + Sleep_bin7 + (amp7 + Sleep_bin_amp7) * cos(2 * pi * times / PERIOD - (acr7 + Sleep_bin_acr7))
+pred_df7 <- data.frame(times = times, y_preds = y_preds7)
+pred_df7$Study <- 'st0107'
+
+# BINDING TOGETHER
+y_preds_Sleep_bin <- rbind(y_preds1, y_preds2, y_preds3, y_preds4, y_preds5, y_preds7)
+pred_df_Sleep_bin <- rbind(pred_df1, pred_df2, pred_df3, pred_df4, pred_df5, pred_df7)
+
+# PLOTTING ALL TOGETHER
+plot_Sleep_bin <- ggplot_cosinor.lm(fit_cosinor_Sleep_bin[[5]]) + 
+  geom_line(data = pred_df_Sleep_bin,
+            aes(x = times, y = y_preds, color = Study),
+            linewidth = 1,
+            linetype = "dashed") +
+  xlim(10, 19) + #ylim(-15, 20) +
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal") +
+  ggtitle("Plot 3: RewP ~ Time + Sleep_bin")
+show(plot_Sleep_bin)
+
+```
+
+
+``` {r rewp_time_daylight_hours}
+
+fit_cosinor_daylight_hours <- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + amp.acro(daylight_hours), data[data$Study == "86",], period = PERIOD)
+  
+# adding in predictors
+fit_cosinor_daylight_hours[[1]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + amp.acro(daylight_hours), data[data$Study == "86",], period = PERIOD)
+fit_cosinor_daylight_hours[[2]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + amp.acro(daylight_hours), data[data$Study == "94",], period = PERIOD)
+fit_cosinor_daylight_hours[[3]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + amp.acro(daylight_hours), data[data$Study == "96",], period = PERIOD)
+fit_cosinor_daylight_hours[[4]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + amp.acro(daylight_hours), data[data$Study == "100",], period = PERIOD)
+fit_cosinor_daylight_hours[[5]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + amp.acro(daylight_hours), data[data$Study == "102",], period = PERIOD)
+fit_cosinor_daylight_hours[[6]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + amp.acro(daylight_hours), data[data$Study == "104",], period = PERIOD)
+fit_cosinor_daylight_hours[[7]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + amp.acro(daylight_hours), data[data$Study == "107",], period = PERIOD)
+
+# st0086
+M1 <- coef(fit_cosinor_daylight_hours[[1]])['(Intercept)']
+daylight_hours1 <- coef(fit_cosinor_daylight_hours[[1]])['daylight_hours']
+amp1 <- coef(fit_cosinor_daylight_hours[[1]])['amp']
+daylight_hours_amp1 <- coef(fit_cosinor_daylight_hours[[1]])['daylight_hours:amp']
+acr1 <- coef(fit_cosinor_daylight_hours[[1]])['acr']
+daylight_hours_acr1 <- coef(fit_cosinor_daylight_hours[[1]])['daylight_hours:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds1 <- M1 + daylight_hours1 + (amp1 + daylight_hours_amp1) * cos(2 * pi * times / PERIOD - (acr1 + daylight_hours_acr1))
+pred_df1 <- data.frame(times = times, y_preds = y_preds1)
+pred_df1$Study <- 'st0086'
+
+# st0094
+M2 <- coef(fit_cosinor_daylight_hours[[2]])['(Intercept)']
+daylight_hours2 <- coef(fit_cosinor_daylight_hours[[2]])['daylight_hours']
+amp2 <- coef(fit_cosinor_daylight_hours[[2]])['amp']
+daylight_hours_amp2 <- coef(fit_cosinor_daylight_hours[[1]])['daylight_hours:amp']
+acr2 <- coef(fit_cosinor_daylight_hours[[2]])['acr']
+daylight_hours_acr2 <- coef(fit_cosinor_daylight_hours[[2]])['daylight_hours:acr']
+
+y_preds2 <- M2 + daylight_hours2 + (amp2 + daylight_hours_amp2) * cos(2 * pi * times / PERIOD - (acr2 + daylight_hours_acr2))
+pred_df2 <- data.frame(times = times, y_preds = y_preds2)
+pred_df2$Study <- 'st0094'
+
+# st0096
+M3 <- coef(fit_cosinor_daylight_hours[[3]])['(Intercept)']
+daylight_hours3 <- coef(fit_cosinor_daylight_hours[[3]])['daylight_hours']
+amp3 <- coef(fit_cosinor_daylight_hours[[3]])['amp']
+daylight_hours_amp3 <- coef(fit_cosinor_daylight_hours[[3]])['daylight_hours:amp']
+acr3 <- coef(fit_cosinor_daylight_hours[[3]])['acr']
+daylight_hours_acr3 <- coef(fit_cosinor_daylight_hours[[3]])['daylight_hours:acr']
+
+y_preds3 <- M3 + daylight_hours3 + (amp3 + daylight_hours_amp3) * cos(2 * pi * times / PERIOD - (acr3 + daylight_hours_acr3))
+pred_df3 <- data.frame(times = times, y_preds = y_preds3)
+pred_df3$Study <- 'st0096'
+
+# st0100
+M4 <- coef(fit_cosinor_daylight_hours[[4]])['(Intercept)']
+daylight_hours4 <- coef(fit_cosinor_daylight_hours[[4]])['daylight_hours']
+amp4 <- coef(fit_cosinor_daylight_hours[[4]])['amp']
+daylight_hours_amp4 <- coef(fit_cosinor_daylight_hours[[4]])['daylight_hours:amp']
+acr4 <- coef(fit_cosinor_daylight_hours[[4]])['acr']
+daylight_hours_acr4 <- coef(fit_cosinor_daylight_hours[[4]])['daylight_hours:acr']
+
+y_preds4 <- M4 + daylight_hours4 + (amp4 + daylight_hours_amp4) * cos(2 * pi * times / PERIOD - (acr4 + daylight_hours_acr4))
+pred_df4 <- data.frame(times = times, y_preds = y_preds4)
+pred_df4$Study <- 'st0100'
+
+# st0102
+M5 <- coef(fit_cosinor_daylight_hours[[5]])['(Intercept)']
+daylight_hours5 <- coef(fit_cosinor_daylight_hours[[5]])['daylight_hours']
+amp5 <- coef(fit_cosinor_daylight_hours[[5]])['amp']
+daylight_hours_amp5 <- coef(fit_cosinor_daylight_hours[[5]])['daylight_hours:amp']
+acr5 <- coef(fit_cosinor_daylight_hours[[5]])['acr']
+daylight_hours_acr5 <- coef(fit_cosinor_daylight_hours[[5]])['daylight_hours:acr']
+
+y_preds5 <- M5 + daylight_hours5 + (amp5 + daylight_hours_amp5) * cos(2 * pi * times / PERIOD - (acr5 + daylight_hours_acr5))
+pred_df5 <- data.frame(times = times, y_preds = y_preds5)
+pred_df5$Study <- 'st0102'
+
+# st0104
+M6 <- coef(fit_cosinor_daylight_hours[[6]])['(Intercept)']
+daylight_hours6 <- coef(fit_cosinor_daylight_hours[[6]])['daylight_hours']
+amp6 <- coef(fit_cosinor_daylight_hours[[6]])['amp']
+daylight_hours_amp6 <- coef(fit_cosinor_daylight_hours[[6]])['daylight_hours:amp']
+acr6 <- coef(fit_cosinor_daylight_hours[[6]])['acr']
+daylight_hours_acr6 <- coef(fit_cosinor_daylight_hours[[6]])['daylight_hours:acr']
+
+y_preds6 <- M6 + daylight_hours6 + (amp6 + daylight_hours_amp6) * cos(2 * pi * times / PERIOD - (acr6 + daylight_hours_acr6))
+pred_df6 <- data.frame(times = times, y_preds = y_preds6)
+pred_df6$Study <- 'st0104'
+
+# st0107
+M7 <- coef(fit_cosinor_daylight_hours[[7]])['(Intercept)']
+daylight_hours7 <- coef(fit_cosinor_daylight_hours[[7]])['daylight_hours']
+amp7 <- coef(fit_cosinor_daylight_hours[[7]])['amp']
+daylight_hours_amp7 <- coef(fit_cosinor_daylight_hours[[7]])['daylight_hours:amp']
+acr7 <- coef(fit_cosinor_daylight_hours[[7]])['acr']
+daylight_hours_acr7 <- coef(fit_cosinor_daylight_hours[[7]])['daylight_hours:acr']
+
+y_preds7 <- M7 + daylight_hours7 + (amp7 + daylight_hours_amp7) * cos(2 * pi * times / PERIOD - (acr7 + daylight_hours_acr7))
+pred_df7 <- data.frame(times = times, y_preds = y_preds7)
+pred_df7$Study <- 'st0107'
+
+# BINDING TOGETHER
+y_preds_daylight_hours <- rbind(y_preds1, y_preds2, y_preds3, y_preds4, y_preds5, y_preds6, y_preds7)
+pred_df_daylight_hours <- rbind(pred_df1, pred_df2, pred_df3, pred_df4, pred_df5, pred_df6, pred_df7)
+
+
+# PLOTTING ALL TOGETHER
+plot_daylight_hours <- ggplot_cosinor.lm(fit_cosinor_daylight_hours[[5]]) + 
+  geom_line(data = pred_df_daylight_hours,
+            aes(x = times, y = y_preds, color = Study),
+            linewidth = 1,
+            linetype = "dashed") +
+  xlim(10, 19) + #ylim(-15, 20) +
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal") +
+  ggtitle("RewP ~ Time + Daylight Hours (Previous Day)")
+show(plot_daylight_hours)
+
+```
+
+
+
+``` {r multiple predictor analysis with daylight_hours, sleep_bin, gender}
+
+fit_cosinor_multiple <- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + Sleep_bin + GENDER + amp.acro(daylight_hours) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "86",], period = PERIOD)
+  
+# adding in predictors
+fit_cosinor_multiple[[1]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + Sleep_bin + GENDER + amp.acro(daylight_hours) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "86",], period = PERIOD)
+fit_cosinor_multiple[[2]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + Sleep_bin + GENDER + amp.acro(daylight_hours) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "94",], period = PERIOD)
+fit_cosinor_multiple[[3]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + Sleep_bin + GENDER + amp.acro(daylight_hours) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "96",], period = PERIOD)
+fit_cosinor_multiple[[4]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + Sleep_bin + GENDER + amp.acro(daylight_hours) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "100",], period = PERIOD)
+fit_cosinor_multiple[[5]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + Sleep_bin + GENDER + amp.acro(daylight_hours) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "102",], period = PERIOD)
+fit_cosinor_multiple[[6]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + Sleep_bin + GENDER + amp.acro(daylight_hours) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "104",], period = PERIOD)
+fit_cosinor_multiple[[7]]<- cosinor.lm(RewP_Cz ~ time(Time) + daylight_hours + Sleep_bin + GENDER + amp.acro(daylight_hours) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "107",], period = PERIOD)
+
+# st0086
+M1 <- coef(fit_cosinor_multiple[[1]])['(Intercept)']
+daylight_hours1 <- coef(fit_cosinor_multiple[[1]])['daylight_hours']
+Sleep_bin1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin']
+GENDER1 <- coef(fit_cosinor_multiple[[1]])['GENDER']
+amp1 <- coef(fit_cosinor_multiple[[1]])['amp'] 
+daylight_hours_amp1 <- coef(fit_cosinor_multiple[[1]])['daylight_hours:amp']
+Sleep_bin_amp1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:amp']
+GENDER_amp1 <- coef(fit_cosinor_multiple[[1]])['GENDER:amp']
+acr1 <- coef(fit_cosinor_multiple[[1]])['acr']
+daylight_hours_acr1 <- coef(fit_cosinor_multiple[[1]])['daylight_hours:acr']
+Sleep_bin_acr1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:acr']
+GENDER_acr1 <- coef(fit_cosinor_multiple[[1]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds1 <- M1 + daylight_hours1 + Sleep_bin1 + GENDER1 + (amp1 + daylight_hours_amp1 + Sleep_bin_amp1 + GENDER_amp1) * cos(2 * pi * times / PERIOD - (acr1 + daylight_hours_acr1 + Sleep_bin_acr1 + GENDER_acr1))
+pred_df1 <- data.frame(times = times, y_preds = y_preds1)
+pred_df1$Study <- 'st0086'
+
+# st0094
+M2 <- coef(fit_cosinor_multiple[[2]])['(Intercept)']
+daylight_hours2 <- coef(fit_cosinor_multiple[[2]])['daylight_hours']
+Sleep_bin2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin']
+GENDER2 <- coef(fit_cosinor_multiple[[2]])['GENDER']
+amp2 <- coef(fit_cosinor_multiple[[2]])['amp'] 
+daylight_hours_amp2 <- coef(fit_cosinor_multiple[[2]])['daylight_hours:amp']
+Sleep_bin_amp2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:amp']
+GENDER_amp2 <- coef(fit_cosinor_multiple[[2]])['GENDER:amp']
+acr2 <- coef(fit_cosinor_multiple[[2]])['acr']
+daylight_hours_acr2 <- coef(fit_cosinor_multiple[[2]])['daylight_hours:acr']
+Sleep_bin_acr2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:acr']
+GENDER_acr2 <- coef(fit_cosinor_multiple[[2]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds2 <- M2 + daylight_hours2 + Sleep_bin2 + GENDER2 + (amp2 + daylight_hours_amp2 + Sleep_bin_amp2 + GENDER_amp2) * cos(2 * pi * times / PERIOD - (acr2 + daylight_hours_acr2 + Sleep_bin_acr2 + GENDER_acr2))
+pred_df2 <- data.frame(times = times, y_preds = y_preds2)
+pred_df2$Study <- 'st0094'
+
+# st0096
+M3 <- coef(fit_cosinor_multiple[[3]])['(Intercept)']
+daylight_hours3 <- coef(fit_cosinor_multiple[[3]])['daylight_hours']
+Sleep_bin3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin']
+GENDER3 <- coef(fit_cosinor_multiple[[3]])['GENDER']
+amp3 <- coef(fit_cosinor_multiple[[3]])['amp'] 
+daylight_hours_amp3 <- coef(fit_cosinor_multiple[[3]])['daylight_hours:amp']
+Sleep_bin_amp3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:amp']
+GENDER_amp3 <- coef(fit_cosinor_multiple[[3]])['GENDER:amp']
+acr3 <- coef(fit_cosinor_multiple[[3]])['acr']
+daylight_hours_acr3 <- coef(fit_cosinor_multiple[[3]])['daylight_hours:acr']
+Sleep_bin_acr3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:acr']
+GENDER_acr3 <- coef(fit_cosinor_multiple[[3]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds3 <- M3 + daylight_hours3 + Sleep_bin3 + GENDER3 + (amp3 + daylight_hours_amp3 + Sleep_bin_amp3 + GENDER_amp3) * cos(2 * pi * times / PERIOD - (acr3 + daylight_hours_acr3 + Sleep_bin_acr3 + GENDER_acr3))
+pred_df3 <- data.frame(times = times, y_preds = y_preds3)
+pred_df3$Study <- 'st0096'
+
+# st0100
+M4 <- coef(fit_cosinor_multiple[[4]])['(Intercept)']
+daylight_hours4 <- coef(fit_cosinor_multiple[[4]])['daylight_hours']
+Sleep_bin4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin']
+GENDER4 <- coef(fit_cosinor_multiple[[4]])['GENDER']
+amp4 <- coef(fit_cosinor_multiple[[4]])['amp'] 
+daylight_hours_amp4 <- coef(fit_cosinor_multiple[[4]])['daylight_hours:amp']
+Sleep_bin_amp4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:amp']
+GENDER_amp4 <- coef(fit_cosinor_multiple[[4]])['GENDER:amp']
+acr4 <- coef(fit_cosinor_multiple[[4]])['acr']
+daylight_hours_acr4 <- coef(fit_cosinor_multiple[[4]])['daylight_hours:acr']
+Sleep_bin_acr4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:acr']
+GENDER_acr4 <- coef(fit_cosinor_multiple[[4]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds4 <- M4 + daylight_hours4 + Sleep_bin4 + GENDER4 + (amp4 + daylight_hours_amp4 + Sleep_bin_amp4 + GENDER_amp4) * cos(2 * pi * times / PERIOD - (acr4 + daylight_hours_acr4 + Sleep_bin_acr4 + GENDER_acr4))
+pred_df4 <- data.frame(times = times, y_preds = y_preds4)
+pred_df4$Study <- 'st0100'
+
+# st0102
+M5 <- coef(fit_cosinor_multiple[[5]])['(Intercept)']
+daylight_hours5 <- coef(fit_cosinor_multiple[[5]])['daylight_hours']
+Sleep_bin5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin']
+GENDER5 <- coef(fit_cosinor_multiple[[5]])['GENDER']
+amp5 <- coef(fit_cosinor_multiple[[5]])['amp'] 
+daylight_hours_amp5 <- coef(fit_cosinor_multiple[[5]])['daylight_hours:amp']
+Sleep_bin_amp5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:amp']
+GENDER_amp5 <- coef(fit_cosinor_multiple[[5]])['GENDER:amp']
+acr5 <- coef(fit_cosinor_multiple[[5]])['acr']
+daylight_hours_acr5 <- coef(fit_cosinor_multiple[[5]])['daylight_hours:acr']
+Sleep_bin_acr5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:acr']
+GENDER_acr5 <- coef(fit_cosinor_multiple[[5]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds5 <- M5 + daylight_hours5 + Sleep_bin5 + GENDER5 + (amp5 + daylight_hours_amp5 + Sleep_bin_amp5 + GENDER_amp5) * cos(2 * pi * times / PERIOD - (acr5 + daylight_hours_acr5 + Sleep_bin_acr5 + GENDER_acr5))
+pred_df5 <- data.frame(times = times, y_preds = y_preds5)
+pred_df5$Study <- 'st0102'
+
+# st0104
+M6 <- coef(fit_cosinor_multiple[[6]])['(Intercept)']
+daylight_hours6 <- coef(fit_cosinor_multiple[[6]])['daylight_hours']
+Sleep_bin6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin']
+GENDER6 <- coef(fit_cosinor_multiple[[6]])['GENDER']
+amp6 <- coef(fit_cosinor_multiple[[6]])['amp'] 
+daylight_hours_amp6 <- coef(fit_cosinor_multiple[[6]])['daylight_hours:amp']
+Sleep_bin_amp6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:amp']
+GENDER_amp6 <- coef(fit_cosinor_multiple[[6]])['GENDER:amp']
+acr6 <- coef(fit_cosinor_multiple[[6]])['acr']
+daylight_hours_acr6 <- coef(fit_cosinor_multiple[[6]])['daylight_hours:acr']
+Sleep_bin_acr6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:acr']
+GENDER_acr6 <- coef(fit_cosinor_multiple[[6]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds6 <- M6 + daylight_hours6 + Sleep_bin6 + GENDER6 + (amp6 + daylight_hours_amp6 + Sleep_bin_amp6 + GENDER_amp6) * cos(2 * pi * times / PERIOD - (acr6 + daylight_hours_acr6 + Sleep_bin_acr6 + GENDER_acr6))
+pred_df6 <- data.frame(times = times, y_preds = y_preds6)
+pred_df6$Study <- 'st0104'
+
+# st0107
+M7 <- coef(fit_cosinor_multiple[[7]])['(Intercept)']
+daylight_hours7 <- coef(fit_cosinor_multiple[[7]])['daylight_hours']
+Sleep_bin7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin']
+GENDER7 <- coef(fit_cosinor_multiple[[7]])['GENDER']
+amp7 <- coef(fit_cosinor_multiple[[7]])['amp'] 
+daylight_hours_amp7 <- coef(fit_cosinor_multiple[[7]])['daylight_hours:amp']
+Sleep_bin_amp7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:amp']
+GENDER_amp7 <- coef(fit_cosinor_multiple[[7]])['GENDER:amp']
+acr7 <- coef(fit_cosinor_multiple[[7]])['acr']
+daylight_hours_acr7 <- coef(fit_cosinor_multiple[[7]])['daylight_hours:acr']
+Sleep_bin_acr7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:acr']
+GENDER_acr7 <- coef(fit_cosinor_multiple[[7]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds7 <- M7 + daylight_hours7 + Sleep_bin7 + GENDER7 + (amp7 + daylight_hours_amp7 + Sleep_bin_amp7 + GENDER_amp7) * cos(2 * pi * times / PERIOD - (acr7 + daylight_hours_acr7 + Sleep_bin_acr7 + GENDER_acr7))
+pred_df7 <- data.frame(times = times, y_preds = y_preds7)
+pred_df7$Study <- 'st0107'
+
+# BINDING TOGETHER
+y_preds_multiple <- rbind(y_preds1, y_preds2, y_preds3, y_preds4, y_preds5, y_preds6, y_preds7)
+pred_df_multiple <- rbind(pred_df1, pred_df2, pred_df3, pred_df4, pred_df5, pred_df6, pred_df7)
+
+# PLOTTING ALL TOGETHER
+plot_multiple <- ggplot_cosinor.lm(fit_cosinor_multiple[[1]]) + 
+  geom_line(data = pred_df_multiple,
+            aes(x = times, y = y_preds, color = Study),
+            linewidth = 1,
+            linetype = "dashed") +
+  xlim(10, 19) + 
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal") +
+  ggtitle("RewP ~ Time + Daylight Hours + Sleep_bin + Gender")
+show(plot_multiple)
+
+```
+
+``` {r rewp ~ time + sleep_bin x gender}
+
+fit_cosinor_multiple <- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + GENDER + amp.acro(Sleep_bin) + amp.acro(GENDER) + Sleep_bin*GENDER + amp.acro(Sleep_bin*GENDER), data[data$Study == "86",], period = PERIOD)
+  
+# adding in predictors
+fit_cosinor_multiple[[1]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + GENDER + Sleep_bin*GENDER + amp.acro(Sleep_bin) + amp.acro(GENDER) + amp.acro(Sleep_bin*GENDER), data[data$Study == "86",], period = PERIOD)
+fit_cosinor_multiple[[2]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + GENDER + Sleep_bin*GENDER + amp.acro(Sleep_bin) + amp.acro(GENDER) + amp.acro(Sleep_bin*GENDER), data[data$Study == "94",], period = PERIOD)
+fit_cosinor_multiple[[3]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + GENDER + Sleep_bin*GENDER + amp.acro(Sleep_bin) + amp.acro(GENDER) + amp.acro(Sleep_bin*GENDER), data[data$Study == "96",], period = PERIOD)
+fit_cosinor_multiple[[4]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + GENDER + Sleep_bin*GENDER + amp.acro(Sleep_bin) + amp.acro(GENDER) + amp.acro(Sleep_bin*GENDER), data[data$Study == "100",], period = PERIOD)
+fit_cosinor_multiple[[5]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + GENDER + Sleep_bin*GENDER + amp.acro(Sleep_bin) + amp.acro(GENDER) + amp.acro(Sleep_bin*GENDER), data[data$Study == "102",], period = PERIOD)
+fit_cosinor_multiple[[6]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + GENDER + Sleep_bin*GENDER + amp.acro(Sleep_bin) + amp.acro(GENDER) + amp.acro(Sleep_bin*GENDER), data[data$Study == "104",], period = PERIOD)
+fit_cosinor_multiple[[7]]<- cosinor.lm(RewP_Cz ~ time(Time) + Sleep_bin + GENDER + Sleep_bin*GENDER + amp.acro(Sleep_bin) + amp.acro(GENDER) + amp.acro(Sleep_bin*GENDER), data[data$Study == "107",], period = PERIOD)
+
+# st0086
+M1 <- coef(fit_cosinor_multiple[[1]])['(Intercept)']
+Sleep_bin1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin']
+GENDER1 <- coef(fit_cosinor_multiple[[1]])['GENDER']
+SleepxGender1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:GENDER']
+
+amp1 <- coef(fit_cosinor_multiple[[1]])['amp'] 
+Sleep_bin_amp1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:amp']
+GENDER_amp1 <- coef(fit_cosinor_multiple[[1]])['GENDER:amp']
+SleepxGENDER_amp1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:GENDER:amp']
+
+acr1 <- coef(fit_cosinor_multiple[[1]])['acr']
+Sleep_bin_acr1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:acr']
+GENDER_acr1 <- coef(fit_cosinor_multiple[[1]])['GENDER:acr']
+SleepxGENDER_acr1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:GENDER:acr']
+
+times <- seq(10, 19, length.out = 200)
+
+y_preds1 <- M1 + Sleep_bin1 + GENDER1 + SleepxGender1 + (amp1 + Sleep_bin_amp1 + GENDER_amp1 + SleepxGENDER_amp1) * cos(2 * pi * times / PERIOD - (acr1 + Sleep_bin_acr1 + GENDER_acr1 + SleepxGENDER_acr1))
+
+pred_df1 <- data.frame(times = times, y_preds = y_preds1)
+pred_df1$Study <- 'st0086'
+
+# st0094
+M2 <- coef(fit_cosinor_multiple[[2]])['(Intercept)']
+Sleep_bin2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin']
+GENDER2 <- coef(fit_cosinor_multiple[[2]])['GENDER']
+SleepxGender2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:GENDER']
+
+amp2 <- coef(fit_cosinor_multiple[[2]])['amp'] 
+Sleep_bin_amp2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:amp']
+GENDER_amp2 <- coef(fit_cosinor_multiple[[2]])['GENDER:amp']
+SleepxGENDER_amp2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:GENDER:amp']
+
+acr2 <- coef(fit_cosinor_multiple[[2]])['acr']
+Sleep_bin_acr2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:acr']
+GENDER_acr2 <- coef(fit_cosinor_multiple[[2]])['GENDER:acr']
+SleepxGENDER_acr2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:GENDER:acr']
+
+times <- seq(10, 19, length.out = 200)
+
+y_preds2 <- M2 + Sleep_bin2 + GENDER2 + SleepxGender2 + (amp2 + Sleep_bin_amp2 + GENDER_amp2 + SleepxGENDER_amp2) * cos(2 * pi * times / PERIOD - (acr2 + Sleep_bin_acr2 + GENDER_acr2 + SleepxGENDER_acr2))
+
+pred_df2 <- data.frame(times = times, y_preds = y_preds2)
+pred_df2$Study <- 'st0094'
+
+# st0096
+M3 <- coef(fit_cosinor_multiple[[3]])['(Intercept)']
+Sleep_bin3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin']
+GENDER3 <- coef(fit_cosinor_multiple[[3]])['GENDER']
+SleepxGender3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:GENDER']
+
+amp3 <- coef(fit_cosinor_multiple[[3]])['amp'] 
+Sleep_bin_amp3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:amp']
+GENDER_amp3 <- coef(fit_cosinor_multiple[[3]])['GENDER:amp']
+SleepxGENDER_amp3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:GENDER:amp']
+
+acr3 <- coef(fit_cosinor_multiple[[3]])['acr']
+Sleep_bin_acr3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:acr']
+GENDER_acr3 <- coef(fit_cosinor_multiple[[3]])['GENDER:acr']
+SleepxGENDER_acr3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:GENDER:acr']
+
+times <- seq(10, 19, length.out = 200)
+
+y_preds3 <- M3 + Sleep_bin3 + GENDER3 + SleepxGender3 + (amp3 + Sleep_bin_amp3 + GENDER_amp3 + SleepxGENDER_amp3) * cos(3 * pi * times / PERIOD - (acr3 + Sleep_bin_acr3 + GENDER_acr3 + SleepxGENDER_acr3))
+
+pred_df3 <- data.frame(times = times, y_preds = y_preds3)
+pred_df3$Study <- 'st0096'
+
+# st0100
+M4 <- coef(fit_cosinor_multiple[[4]])['(Intercept)']
+Sleep_bin4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin']
+GENDER4 <- coef(fit_cosinor_multiple[[4]])['GENDER']
+SleepxGender4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:GENDER']
+
+amp4 <- coef(fit_cosinor_multiple[[4]])['amp'] 
+Sleep_bin_amp4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:amp']
+GENDER_amp4 <- coef(fit_cosinor_multiple[[4]])['GENDER:amp']
+SleepxGENDER_amp4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:GENDER:amp']
+
+acr4 <- coef(fit_cosinor_multiple[[4]])['acr']
+Sleep_bin_acr4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:acr']
+GENDER_acr4 <- coef(fit_cosinor_multiple[[4]])['GENDER:acr']
+SleepxGENDER_acr4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:GENDER:acr']
+
+times <- seq(10, 19, length.out = 200)
+
+y_preds4 <- M4 + Sleep_bin4 + GENDER4 + SleepxGender4 + (amp4 + Sleep_bin_amp4 + GENDER_amp4 + SleepxGENDER_amp4) * cos(4 * pi * times / PERIOD - (acr4 + Sleep_bin_acr4 + GENDER_acr4 + SleepxGENDER_acr4))
+
+pred_df4 <- data.frame(times = times, y_preds = y_preds4)
+pred_df4$Study <- 'st0100'
+
+# st0102
+M5 <- coef(fit_cosinor_multiple[[5]])['(Intercept)']
+Sleep_bin5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin']
+GENDER5 <- coef(fit_cosinor_multiple[[5]])['GENDER']
+SleepxGender5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:GENDER']
+
+amp5 <- coef(fit_cosinor_multiple[[5]])['amp'] 
+Sleep_bin_amp5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:amp']
+GENDER_amp5 <- coef(fit_cosinor_multiple[[5]])['GENDER:amp']
+SleepxGENDER_amp5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:GENDER:amp']
+
+acr5 <- coef(fit_cosinor_multiple[[5]])['acr']
+Sleep_bin_acr5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:acr']
+GENDER_acr5 <- coef(fit_cosinor_multiple[[5]])['GENDER:acr']
+SleepxGENDER_acr5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:GENDER:acr']
+
+times <- seq(10, 19, length.out = 200)
+
+y_preds5 <- M5 + Sleep_bin5 + GENDER5 + SleepxGender5 + (amp5 + Sleep_bin_amp5 + GENDER_amp5 + SleepxGENDER_amp5) * cos(5 * pi * times / PERIOD - (acr5 + Sleep_bin_acr5 + GENDER_acr5 + SleepxGENDER_acr5))
+
+pred_df5 <- data.frame(times = times, y_preds = y_preds5)
+pred_df5$Study <- 'st0102'
+
+# st0104
+M6 <- coef(fit_cosinor_multiple[[6]])['(Intercept)']
+Sleep_bin6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin']
+GENDER6 <- coef(fit_cosinor_multiple[[6]])['GENDER']
+SleepxGender6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:GENDER']
+
+amp6 <- coef(fit_cosinor_multiple[[6]])['amp'] 
+Sleep_bin_amp6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:amp']
+GENDER_amp6 <- coef(fit_cosinor_multiple[[6]])['GENDER:amp']
+SleepxGENDER_amp6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:GENDER:amp']
+
+acr6 <- coef(fit_cosinor_multiple[[6]])['acr']
+Sleep_bin_acr6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:acr']
+GENDER_acr6 <- coef(fit_cosinor_multiple[[6]])['GENDER:acr']
+SleepxGENDER_acr6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:GENDER:acr']
+
+times <- seq(10, 19, length.out = 200)
+
+y_preds6 <- M6 + Sleep_bin6 + GENDER6 + SleepxGender6 + (amp6 + Sleep_bin_amp6 + GENDER_amp6 + SleepxGENDER_amp6) * cos(6 * pi * times / PERIOD - (acr6 + Sleep_bin_acr6 + GENDER_acr6 + SleepxGENDER_acr6))
+
+pred_df6 <- data.frame(times = times, y_preds = y_preds6)
+pred_df6$Study <- 'st0104'
+
+# st0107
+M7 <- coef(fit_cosinor_multiple[[7]])['(Intercept)']
+Sleep_bin7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin']
+GENDER7 <- coef(fit_cosinor_multiple[[7]])['GENDER']
+SleepxGender7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:GENDER']
+
+amp7 <- coef(fit_cosinor_multiple[[7]])['amp'] 
+Sleep_bin_amp7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:amp']
+GENDER_amp7 <- coef(fit_cosinor_multiple[[7]])['GENDER:amp']
+SleepxGENDER_amp7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:GENDER:amp']
+
+acr7 <- coef(fit_cosinor_multiple[[7]])['acr']
+Sleep_bin_acr7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:acr']
+GENDER_acr7 <- coef(fit_cosinor_multiple[[7]])['GENDER:acr']
+SleepxGENDER_acr7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:GENDER:acr']
+
+times <- seq(10, 19, length.out = 200)
+
+y_preds7 <- M7 + Sleep_bin7 + GENDER7 + SleepxGender7 + (amp7 + Sleep_bin_amp7 + GENDER_amp7 + SleepxGENDER_amp7) * cos(7 * pi * times / PERIOD - (acr7 + Sleep_bin_acr7 + GENDER_acr7 + SleepxGENDER_acr7))
+
+pred_df7 <- data.frame(times = times, y_preds = y_preds7)
+pred_df7$Study <- 'st0107'
+
+
+# BINDING TOGETHER
+y_preds_multiple <- rbind(y_preds1, y_preds2, y_preds3, y_preds4, y_preds5, y_preds7)
+pred_df_multiple <- rbind(pred_df1, pred_df2, pred_df3, pred_df4, pred_df5, pred_df7)
+
+# PLOTTING ALL TOGETHER
+plot_multiple <- ggplot_cosinor.lm(fit_cosinor_multiple[[1]]) + 
+  geom_line(data = pred_df_multiple,
+            aes(x = times, y = y_preds, color = Study),
+            linewidth = 1,
+            linetype = "dashed") +
+  xlim(10, 19) + 
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal") +
+  ggtitle("Plot 4: RewP ~ Time + Sleep_bin + Gender + Sleep_bin:GENDER")
+show(plot_multiple)
+
+```
+
+``` {r multiple predictor analysis with StudyLength_bin, sleep_bin, gender WITHOUT INTERACTION EFFECT}
+
+data$StudyLength_bin <- as.numeric(data$StudyLength_bin)
+
+
+fit_cosinor_multiple <- cosinor.lm(RewP_Cz ~ time(Time) + StudyLength_bin + Sleep_bin + GENDER + amp.acro(StudyLength_bin) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "86",], period = PERIOD)
+  
+# adding in predictors
+fit_cosinor_multiple[[1]]<- cosinor.lm(RewP_Cz ~ time(Time) + StudyLength_bin + Sleep_bin + GENDER + amp.acro(StudyLength_bin) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "86",], period = PERIOD)
+fit_cosinor_multiple[[2]]<- cosinor.lm(RewP_Cz ~ time(Time) + StudyLength_bin + Sleep_bin + GENDER + amp.acro(StudyLength_bin) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "94",], period = PERIOD)
+fit_cosinor_multiple[[3]]<- cosinor.lm(RewP_Cz ~ time(Time) + StudyLength_bin + Sleep_bin + GENDER + amp.acro(StudyLength_bin) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "96",], period = PERIOD)
+fit_cosinor_multiple[[4]]<- cosinor.lm(RewP_Cz ~ time(Time) + StudyLength_bin + Sleep_bin + GENDER + amp.acro(StudyLength_bin) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "100",], period = PERIOD)
+fit_cosinor_multiple[[5]]<- cosinor.lm(RewP_Cz ~ time(Time) + StudyLength_bin + Sleep_bin + GENDER + amp.acro(StudyLength_bin) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "102",], period = PERIOD)
+fit_cosinor_multiple[[6]]<- cosinor.lm(RewP_Cz ~ time(Time) + StudyLength_bin + Sleep_bin + GENDER + amp.acro(StudyLength_bin) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "104",], period = PERIOD)
+fit_cosinor_multiple[[7]]<- cosinor.lm(RewP_Cz ~ time(Time) + StudyLength_bin + Sleep_bin + GENDER + amp.acro(StudyLength_bin) + amp.acro(Sleep_bin) + amp.acro(GENDER), data[data$Study == "107",], period = PERIOD)
+
+# st0086
+M1 <- coef(fit_cosinor_multiple[[1]])['(Intercept)']
+StudyLength_bin1 <- coef(fit_cosinor_multiple[[1]])['StudyLength_bin']
+Sleep_bin1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin']
+GENDER1 <- coef(fit_cosinor_multiple[[1]])['GENDER']
+amp1 <- coef(fit_cosinor_multiple[[1]])['amp'] 
+StudyLength_bin_amp1 <- coef(fit_cosinor_multiple[[1]])['StudyLength_bin:amp']
+Sleep_bin_amp1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:amp']
+GENDER_amp1 <- coef(fit_cosinor_multiple[[1]])['GENDER:amp']
+acr1 <- coef(fit_cosinor_multiple[[1]])['acr']
+StudyLength_bin_acr1 <- coef(fit_cosinor_multiple[[1]])['StudyLength_bin:acr']
+Sleep_bin_acr1 <- coef(fit_cosinor_multiple[[1]])['Sleep_bin:acr']
+GENDER_acr1 <- coef(fit_cosinor_multiple[[1]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds1 <- M1 + StudyLength_bin1 + Sleep_bin1 + GENDER1 + (amp1 + StudyLength_bin_amp1 + Sleep_bin_amp1 + GENDER_amp1) * cos(2 * pi * times / PERIOD - (acr1 + StudyLength_bin_acr1 + Sleep_bin_acr1 + GENDER_acr1))
+pred_df1 <- data.frame(times = times, y_preds = y_preds1)
+pred_df1$Study <- 'st0086'
+
+# st0094
+M2 <- coef(fit_cosinor_multiple[[2]])['(Intercept)']
+StudyLength_bin2 <- coef(fit_cosinor_multiple[[2]])['StudyLength_bin']
+Sleep_bin2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin']
+GENDER2 <- coef(fit_cosinor_multiple[[2]])['GENDER']
+amp2 <- coef(fit_cosinor_multiple[[2]])['amp'] 
+StudyLength_bin_amp2 <- coef(fit_cosinor_multiple[[2]])['StudyLength_bin:amp']
+Sleep_bin_amp2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:amp']
+GENDER_amp2 <- coef(fit_cosinor_multiple[[2]])['GENDER:amp']
+acr2 <- coef(fit_cosinor_multiple[[2]])['acr']
+StudyLength_bin_acr2 <- coef(fit_cosinor_multiple[[2]])['StudyLength_bin:acr']
+Sleep_bin_acr2 <- coef(fit_cosinor_multiple[[2]])['Sleep_bin:acr']
+GENDER_acr2 <- coef(fit_cosinor_multiple[[2]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds2 <- M2 + StudyLength_bin2 + Sleep_bin2 + GENDER2 + (amp2 + StudyLength_bin_amp2 + Sleep_bin_amp2 + GENDER_amp2) * cos(2 * pi * times / PERIOD - (acr2 + StudyLength_bin_acr2 + Sleep_bin_acr2 + GENDER_acr2))
+pred_df2 <- data.frame(times = times, y_preds = y_preds2)
+pred_df2$Study <- 'st0094'
+
+# st0096
+M3 <- coef(fit_cosinor_multiple[[3]])['(Intercept)']
+StudyLength_bin3 <- coef(fit_cosinor_multiple[[3]])['StudyLength_bin']
+Sleep_bin3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin']
+GENDER3 <- coef(fit_cosinor_multiple[[3]])['GENDER']
+amp3 <- coef(fit_cosinor_multiple[[3]])['amp'] 
+StudyLength_bin_amp3 <- coef(fit_cosinor_multiple[[3]])['StudyLength_bin:amp']
+Sleep_bin_amp3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:amp']
+GENDER_amp3 <- coef(fit_cosinor_multiple[[3]])['GENDER:amp']
+acr3 <- coef(fit_cosinor_multiple[[3]])['acr']
+StudyLength_bin_acr3 <- coef(fit_cosinor_multiple[[3]])['StudyLength_bin:acr']
+Sleep_bin_acr3 <- coef(fit_cosinor_multiple[[3]])['Sleep_bin:acr']
+GENDER_acr3 <- coef(fit_cosinor_multiple[[3]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds3 <- M3 + StudyLength_bin3 + Sleep_bin3 + GENDER3 + (amp3 + StudyLength_bin_amp3 + Sleep_bin_amp3 + GENDER_amp3) * cos(2 * pi * times / PERIOD - (acr3 + StudyLength_bin_acr3 + Sleep_bin_acr3 + GENDER_acr3))
+pred_df3 <- data.frame(times = times, y_preds = y_preds3)
+pred_df3$Study <- 'st0096'
+
+# st0100
+M4 <- coef(fit_cosinor_multiple[[4]])['(Intercept)']
+StudyLength_bin4 <- coef(fit_cosinor_multiple[[4]])['StudyLength_bin']
+Sleep_bin4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin']
+GENDER4 <- coef(fit_cosinor_multiple[[4]])['GENDER']
+amp4 <- coef(fit_cosinor_multiple[[4]])['amp'] 
+StudyLength_bin_amp4 <- coef(fit_cosinor_multiple[[4]])['StudyLength_bin:amp']
+Sleep_bin_amp4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:amp']
+GENDER_amp4 <- coef(fit_cosinor_multiple[[4]])['GENDER:amp']
+acr4 <- coef(fit_cosinor_multiple[[4]])['acr']
+StudyLength_bin_acr4 <- coef(fit_cosinor_multiple[[4]])['StudyLength_bin:acr']
+Sleep_bin_acr4 <- coef(fit_cosinor_multiple[[4]])['Sleep_bin:acr']
+GENDER_acr4 <- coef(fit_cosinor_multiple[[4]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds4 <- M4 + StudyLength_bin4 + Sleep_bin4 + GENDER4 + (amp4 + StudyLength_bin_amp4 + Sleep_bin_amp4 + GENDER_amp4) * cos(2 * pi * times / PERIOD - (acr4 + StudyLength_bin_acr4 + Sleep_bin_acr4 + GENDER_acr4))
+pred_df4 <- data.frame(times = times, y_preds = y_preds4)
+pred_df4$Study <- 'st0100'
+
+# st0102
+M5 <- coef(fit_cosinor_multiple[[5]])['(Intercept)']
+StudyLength_bin5 <- coef(fit_cosinor_multiple[[5]])['StudyLength_bin']
+Sleep_bin5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin']
+GENDER5 <- coef(fit_cosinor_multiple[[5]])['GENDER']
+amp5 <- coef(fit_cosinor_multiple[[5]])['amp'] 
+StudyLength_bin_amp5 <- coef(fit_cosinor_multiple[[5]])['StudyLength_bin:amp']
+Sleep_bin_amp5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:amp']
+GENDER_amp5 <- coef(fit_cosinor_multiple[[5]])['GENDER:amp']
+acr5 <- coef(fit_cosinor_multiple[[5]])['acr']
+StudyLength_bin_acr5 <- coef(fit_cosinor_multiple[[5]])['StudyLength_bin:acr']
+Sleep_bin_acr5 <- coef(fit_cosinor_multiple[[5]])['Sleep_bin:acr']
+GENDER_acr5 <- coef(fit_cosinor_multiple[[5]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds5 <- M5 + StudyLength_bin5 + Sleep_bin5 + GENDER5 + (amp5 + StudyLength_bin_amp5 + Sleep_bin_amp5 + GENDER_amp5) * cos(2 * pi * times / PERIOD - (acr5 + StudyLength_bin_acr5 + Sleep_bin_acr5 + GENDER_acr5))
+pred_df5 <- data.frame(times = times, y_preds = y_preds5)
+pred_df5$Study <- 'st0102'
+
+# st0104
+M6 <- coef(fit_cosinor_multiple[[6]])['(Intercept)']
+StudyLength_bin6 <- coef(fit_cosinor_multiple[[6]])['StudyLength_bin']
+Sleep_bin6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin']
+GENDER6 <- coef(fit_cosinor_multiple[[6]])['GENDER']
+amp6 <- coef(fit_cosinor_multiple[[6]])['amp'] 
+StudyLength_bin_amp6 <- coef(fit_cosinor_multiple[[6]])['StudyLength_bin:amp']
+Sleep_bin_amp6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:amp']
+GENDER_amp6 <- coef(fit_cosinor_multiple[[6]])['GENDER:amp']
+acr6 <- coef(fit_cosinor_multiple[[6]])['acr']
+StudyLength_bin_acr6 <- coef(fit_cosinor_multiple[[6]])['StudyLength_bin:acr']
+Sleep_bin_acr6 <- coef(fit_cosinor_multiple[[6]])['Sleep_bin:acr']
+GENDER_acr6 <- coef(fit_cosinor_multiple[[6]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds6 <- M6 + StudyLength_bin6 + Sleep_bin6 + GENDER6 + (amp6 + StudyLength_bin_amp6 + Sleep_bin_amp6 + GENDER_amp6) * cos(2 * pi * times / PERIOD - (acr6 + StudyLength_bin_acr6 + Sleep_bin_acr6 + GENDER_acr6))
+pred_df6 <- data.frame(times = times, y_preds = y_preds6)
+pred_df6$Study <- 'st0104'
+
+# st0107
+M7 <- coef(fit_cosinor_multiple[[7]])['(Intercept)']
+StudyLength_bin7 <- coef(fit_cosinor_multiple[[7]])['StudyLength_bin']
+Sleep_bin7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin']
+GENDER7 <- coef(fit_cosinor_multiple[[7]])['GENDER']
+amp7 <- coef(fit_cosinor_multiple[[7]])['amp'] 
+StudyLength_bin_amp7 <- coef(fit_cosinor_multiple[[7]])['StudyLength_bin:amp']
+Sleep_bin_amp7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:amp']
+GENDER_amp7 <- coef(fit_cosinor_multiple[[7]])['GENDER:amp']
+acr7 <- coef(fit_cosinor_multiple[[7]])['acr']
+StudyLength_bin_acr7 <- coef(fit_cosinor_multiple[[7]])['StudyLength_bin:acr']
+Sleep_bin_acr7 <- coef(fit_cosinor_multiple[[7]])['Sleep_bin:acr']
+GENDER_acr7 <- coef(fit_cosinor_multiple[[7]])['GENDER:acr']
+times <- seq(10, 19, length.out = 200)
+
+y_preds7 <- M7 + StudyLength_bin7 + Sleep_bin7 + GENDER7 + (amp7 + StudyLength_bin_amp7 + Sleep_bin_amp7 + GENDER_amp7) * cos(2 * pi * times / PERIOD - (acr7 + StudyLength_bin_acr7 + Sleep_bin_acr7 + GENDER_acr7))
+pred_df7 <- data.frame(times = times, y_preds = y_preds7)
+pred_df7$Study <- 'st0107'
+
+# BINDING TOGETHER
+y_preds_multiple <- rbind(y_preds1, y_preds2, y_preds3, y_preds4, y_preds5, y_preds6, y_preds7)
+pred_df_multiple <- rbind(pred_df1, pred_df2, pred_df3, pred_df4, pred_df5, pred_df6, pred_df7)
+
+# PLOTTING ALL TOGETHER
+plot_multiple <- ggplot_cosinor.lm(fit_cosinor_multiple[[1]]) + 
+  geom_line(data = pred_df_multiple,
+            aes(x = times, y = y_preds, color = Study),
+            linewidth = 1,
+            linetype = "dashed") +
+  xlim(10, 19) + 
+  xlab("Time (hours past 0000)") +
+  ylab("Reward Signal") +
+  ggtitle("RewP ~ Time + Sleep_bin + GENDER (No Interaction)")
+show(plot_multiple)
+
+```
